@@ -1,0 +1,342 @@
+"use client";
+
+import { useState } from "react";
+import { AnimatePresence, motion, Reorder } from "motion/react";
+import { ArrowDown, ArrowUp, Eye, EyeOff, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Icon, ICONS } from "@/components/icon";
+import { Modal } from "@/components/modal";
+import { EASE } from "@/components/motion";
+import type { Checklist, Department, Field } from "@/lib/types";
+import { cx, rangeLabel } from "@/lib/utils";
+import { useToast } from "../admin-shell";
+import { api, PageTitle, useData } from "../use-data";
+
+const COLORS = ["#1691D0", "#2BAAE2", "#3AC0C3", "#04A67A", "#9ECC3B", "#283A83", "#7A5AF8", "#E9A23B", "#E0475B", "#51938B"];
+
+type Draft = Omit<Checklist, "id" | "created_at"> & { id?: string };
+
+const blankField = (): Field & { _k: string } => ({
+  _k: Math.random().toString(36).slice(2),
+  key: "",
+  label_en: "",
+  label_ar: "",
+  type: "number",
+  unit: "°C",
+  min: null,
+  max: null,
+  required: true,
+});
+
+export default function ChecklistsPage() {
+  const toast = useToast();
+  const { data, reload, setData } = useData<Checklist[]>("/api/admin/checklists");
+  const { data: deps } = useData<Department[]>("/api/admin/departments");
+  const [draft, setDraft] = useState<Draft | null>(null);
+
+  function create() {
+    setDraft({
+      department_id: deps?.[0]?.id ?? "",
+      title_en: "",
+      title_ar: "",
+      icon: "ClipboardCheck",
+      color: COLORS[0],
+      fields: [blankField()],
+      range_note: "",
+      footer_note: "Infection Prevention and Control Department",
+      orientation: "portrait",
+      sort: (data?.length ?? 0) + 1,
+      active: true,
+    });
+  }
+
+  async function toggle(c: Checklist) {
+    setData((d) => d?.map((x) => (x.id === c.id ? { ...x, active: !c.active } : x)) ?? null);
+    try {
+      await api(`/api/admin/checklists/${c.id}`, "PATCH", { active: !c.active });
+      toast(c.active ? "Hidden from staff" : "Visible to staff");
+    } catch (e) {
+      toast((e as Error).message, "error");
+      reload();
+    }
+  }
+
+  async function move(i: number, dir: -1 | 1) {
+    if (!data) return;
+    const j = i + dir;
+    if (j < 0 || j >= data.length) return;
+    const next = [...data];
+    [next[i], next[j]] = [next[j], next[i]];
+    setData(next);
+    await Promise.all(next.map((c, k) => (c.sort !== k + 1 ? api(`/api/admin/checklists/${c.id}`, "PATCH", { sort: k + 1 }) : null)));
+    reload();
+  }
+
+  async function remove(c: Checklist) {
+    if (!confirm(`Delete “${c.title_en}” and ALL of its records? This can’t be undone.\n\nTip: use the eye button to hide it instead.`)) return;
+    try {
+      await api(`/api/admin/checklists/${c.id}`, "DELETE");
+      setData((d) => d?.filter((x) => x.id !== c.id) ?? null);
+      toast("Checklist deleted");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+
+  return (
+    <div>
+      <PageTitle title="Checklists" sub="Add, edit, reorder or hide the checklists staff see">
+        <button className="btn btn-primary" onClick={create} disabled={!deps?.length}>
+          <Plus className="h-4 w-4" /> New checklist
+        </button>
+      </PageTitle>
+
+      <div className="flex flex-col gap-3">
+        <AnimatePresence initial={false}>
+          {data?.map((c, i) => (
+            <motion.div
+              key={c.id}
+              layout
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.4, ease: EASE }}
+              className={cx("glass flex flex-wrap items-center gap-4 p-4", !c.active && "opacity-60")}
+            >
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-white" style={{ background: c.color }}>
+                <Icon name={c.icon} className="h-6 w-6" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold leading-snug">{c.title_en}</p>
+                <p className="mt-0.5 text-[13px] text-ink-3">
+                  {deps?.find((d) => d.id === c.department_id)?.name_en ?? "—"} ·{" "}
+                  {c.fields.map((f) => `${f.label_en}${rangeLabel(f) ? ` (${rangeLabel(f)})` : ""}`).join(", ")}
+                </p>
+              </div>
+              <div className="flex gap-1.5">
+                <button className="btn btn-ghost btn-sm btn-icon" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up">
+                  <ArrowUp className="h-4 w-4" />
+                </button>
+                <button className="btn btn-ghost btn-sm btn-icon" onClick={() => move(i, 1)} disabled={i === data.length - 1} aria-label="Move down">
+                  <ArrowDown className="h-4 w-4" />
+                </button>
+                <button className="btn btn-ghost btn-sm btn-icon" onClick={() => toggle(c)} aria-label={c.active ? "Hide" : "Show"} title={c.active ? "Visible – click to hide" : "Hidden – click to show"}>
+                  {c.active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm btn-icon"
+                  onClick={() => setDraft({ ...c, fields: c.fields.map((f) => ({ ...f, _k: f.key })) as Field[] })}
+                  aria-label="Edit"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button className="btn btn-danger btn-sm btn-icon" onClick={() => remove(c)} aria-label="Delete">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+        {data?.length === 0 && <p className="glass p-10 text-center text-ink-3">No checklists yet.</p>}
+        {!data && <div className="glass h-24 animate-pulse" />}
+      </div>
+
+      <Editor
+        draft={draft}
+        deps={deps ?? []}
+        onClose={() => setDraft(null)}
+        onSaved={(msg) => {
+          setDraft(null);
+          reload();
+          toast(msg);
+        }}
+      />
+    </div>
+  );
+}
+
+function Editor({ draft, deps, onClose, onSaved }: { draft: Draft | null; deps: Department[]; onClose: () => void; onSaved: (m: string) => void }) {
+  const [d, setD] = useState<Draft | null>(null);
+  const [src, setSrc] = useState<Draft | null>(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (draft !== src) {
+    setSrc(draft);
+    setD(draft);
+    setErr("");
+  }
+  if (!d) return <Modal open={false} onClose={onClose} title="">{null}</Modal>;
+
+  const fields = d.fields as (Field & { _k?: string })[];
+  const setField = (i: number, patch: Partial<Field>) => setD({ ...d, fields: fields.map((f, k) => (k === i ? { ...f, ...patch } : f)) });
+
+  async function save() {
+    if (!d) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const body = { ...d, fields: fields.map((f) => ({ ...f, _k: undefined })) };
+      if (d.id) await api(`/api/admin/checklists/${d.id}`, "PATCH", body);
+      else await api(`/api/admin/checklists`, "POST", body);
+      onSaved(d.id ? "Checklist saved" : "Checklist created");
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={!!draft}
+      onClose={onClose}
+      wide
+      title={d.id ? "Edit checklist" : "New checklist"}
+      footer={
+        <>
+          {err && <p className="mr-auto self-center text-[13px] text-danger">{err}</p>}
+          <button className="btn btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>
+            {d.id ? "Save" : "Create"}
+          </button>
+        </>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <label className="label">Title (English)</label>
+          <input className="field sm" value={d.title_en} onChange={(e) => setD({ ...d, title_en: e.target.value })} placeholder="Daily Temperature Check for Refrigerator" />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="label">Title (Arabic)</label>
+          <input className="field sm" dir="rtl" value={d.title_ar} onChange={(e) => setD({ ...d, title_ar: e.target.value })} />
+        </div>
+        <div>
+          <label className="label">Department</label>
+          <select className="field sm" value={d.department_id} onChange={(e) => setD({ ...d, department_id: e.target.value })}>
+            {deps.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name_en}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label">PDF page layout</label>
+          <div className="grid grid-cols-2 gap-2">
+            {(["portrait", "landscape"] as const).map((o) => (
+              <button
+                key={o}
+                type="button"
+                onClick={() => setD({ ...d, orientation: o })}
+                className={cx("btn btn-sm border capitalize", d.orientation === o ? "border-blue/40 bg-blue/10 text-blue" : "border-ink/10 bg-white/[0.06] text-ink-2")}
+              >
+                {o}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="label">Icon</label>
+          <div className="grid grid-cols-8 gap-1.5 sm:grid-cols-[repeat(13,minmax(0,1fr))]">
+            {Object.keys(ICONS).map((name) => (
+              <button
+                key={name}
+                type="button"
+                title={name}
+                onClick={() => setD({ ...d, icon: name })}
+                className={cx(
+                  "grid aspect-square place-items-center rounded-xl transition-colors",
+                  d.icon === name ? "text-white" : "bg-white/[0.06] text-ink-2 hover:bg-white/10",
+                )}
+                style={d.icon === name ? { background: d.color } : undefined}
+              >
+                <Icon name={name} className="h-[18px] w-[18px]" />
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="label">Color</label>
+          <div className="flex flex-wrap gap-2">
+            {COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setD({ ...d, color: c })}
+                aria-label={c}
+                className={cx("h-8 w-8 rounded-full transition-transform", d.color === c && "scale-110 ring-2 ring-white ring-offset-2 ring-offset-[rgba(13,33,56,.25)]")}
+                style={{ background: c }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="sm:col-span-2">
+          <div className="mb-2 flex items-center justify-between">
+            <label className="label mb-0">Fields staff fill in</label>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setD({ ...d, fields: [...fields, blankField()] })}>
+              <Plus className="h-4 w-4" /> Add field
+            </button>
+          </div>
+          <p className="mb-3 text-[12px] text-ink-3">Date, day, time, name and signature are added automatically.</p>
+          <Reorder.Group axis="y" values={fields} onReorder={(f) => setD({ ...d, fields: f })} className="flex flex-col gap-2">
+            {fields.map((f, i) => (
+              <Reorder.Item key={f._k ?? f.key} value={f} className="rounded-2xl border border-ink/5 bg-white/[0.06] p-3">
+                <div className="grid gap-2 sm:grid-cols-[1fr_1fr_130px_auto]">
+                  <input className="field sm" placeholder="Label (English)" value={f.label_en} onChange={(e) => setField(i, { label_en: e.target.value })} />
+                  <input className="field sm" dir="rtl" placeholder="الاسم بالعربي" value={f.label_ar} onChange={(e) => setField(i, { label_ar: e.target.value })} />
+                  <select className="field sm" value={f.type} onChange={(e) => setField(i, { type: e.target.value as Field["type"] })}>
+                    <option value="number">Number</option>
+                    <option value="text">Text</option>
+                    <option value="select">Choice</option>
+                    <option value="yesno">Yes / No</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm btn-icon"
+                    onClick={() => setD({ ...d, fields: fields.filter((_, k) => k !== i) })}
+                    disabled={fields.length === 1}
+                    aria-label="Remove field"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {f.type === "number" && (
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <input className="field sm" placeholder="Unit (°C, %)" value={f.unit ?? ""} onChange={(e) => setField(i, { unit: e.target.value })} />
+                    <input className="field sm" inputMode="decimal" placeholder="Normal min" value={f.min ?? ""} onChange={(e) => setField(i, { min: e.target.value === "" ? null : (e.target.value as unknown as number) })} />
+                    <input className="field sm" inputMode="decimal" placeholder="Normal max" value={f.max ?? ""} onChange={(e) => setField(i, { max: e.target.value === "" ? null : (e.target.value as unknown as number) })} />
+                  </div>
+                )}
+                {f.type === "select" && (
+                  <input
+                    className="field sm mt-2"
+                    placeholder="Choices, separated by commas"
+                    value={Array.isArray(f.options) ? f.options.join(", ") : ""}
+                    onChange={(e) => setField(i, { options: e.target.value.split(",").map((s) => s.trimStart()) })}
+                  />
+                )}
+                <label className="mt-2 flex items-center gap-2 text-[13px] text-ink-2">
+                  <input type="checkbox" className="h-4 w-4 accent-[#1691d0]" checked={f.required} onChange={(e) => setField(i, { required: e.target.checked })} />
+                  Required
+                </label>
+              </Reorder.Item>
+            ))}
+          </Reorder.Group>
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="label">Normal range note (printed under the table)</label>
+          <input className="field sm" value={d.range_note} onChange={(e) => setD({ ...d, range_note: e.target.value })} placeholder="NORMAL RANGE: 2°C TO 8°C" />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="label">Footer (printed at the bottom of the PDF)</label>
+          <input className="field sm" value={d.footer_note} onChange={(e) => setD({ ...d, footer_note: e.target.value })} />
+        </div>
+      </div>
+    </Modal>
+  );
+}
