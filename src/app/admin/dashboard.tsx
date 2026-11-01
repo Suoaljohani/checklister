@@ -13,8 +13,6 @@ import { PageTitle, useData } from "./use-data";
 
 export function Dashboard() {
   const { data, error } = useData<Stats>("/api/admin/stats", 5000);
-  const now = useNow();
-  const since = data && now ? Math.max(0, Math.round((now.getTime() - new Date(data.generated_at).getTime()) / 1000)) : 0;
 
   return (
     <div>
@@ -22,7 +20,7 @@ export function Dashboard() {
         <span className="glass flex items-center gap-2 rounded-full px-3.5 py-2 text-[12px] font-semibold tracking-wide text-ink-2" style={{ borderRadius: 999 }}>
           <span className={cx("pulse-dot", error && "!bg-danger")} />
           {error ? "RECONNECTING" : "LIVE"}
-          <span className="num font-normal text-ink-3">{data ? `${since}s ago` : "…"}</span>
+          <span className="num font-normal text-ink-3">{data ? <Since at={data.generated_at} /> : "…"}</span>
         </span>
       </PageTitle>
 
@@ -349,4 +347,11 @@ function Sparkline({ c }: { c: Stats["per_checklist"][number] }) {
       </div>
     </div>
   );
+}
+
+/** Ticks every second on its own so the rest of the dashboard doesn't re-render. */
+function Since({ at }: { at: string }) {
+  const now = useNow();
+  const s = now ? Math.max(0, Math.round((now.getTime() - new Date(at).getTime()) / 1000)) : 0;
+  return <>{s}s ago</>;
 }
