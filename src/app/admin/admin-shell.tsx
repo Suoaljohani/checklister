@@ -200,8 +200,8 @@ function Login({ onDone }: { onDone: () => void }) {
     <main className="grid flex-1 place-items-center px-4 py-16">
       <motion.form
         onSubmit={submit}
-        initial={{ opacity: 0, y: 18, filter: "blur(8px)" }}
-        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, ease: EASE }}
         className="glass-strong w-full max-w-sm p-7"
       >

@@ -119,7 +119,7 @@ export function SignatureSheet({
           aria-labelledby="sig-title"
         >
           <motion.div
-            className="absolute inset-0 bg-black/50 backdrop-blur-[6px]"
+            className="absolute inset-0 bg-black/60"
             onClick={() => !busy && onClose()}
             aria-hidden
           />

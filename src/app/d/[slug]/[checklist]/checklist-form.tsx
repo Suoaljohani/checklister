@@ -19,7 +19,7 @@ export function ChecklistForm() {
   const { slug, checklist: id } = useParams<{ slug: string; checklist: string }>();
   const router = useRouter();
   const { staff, ready } = useStaff();
-  const now = useNow();
+  const now = useNow(5_000);
   const [data, setData] = useState<Data | null>(null);
   const [missing, setMissing] = useState(false);
   const [values, setValues] = useState<Record<string, FieldValue>>({});
@@ -353,7 +353,7 @@ function Success({
     <AnimatePresence>
       {done && checklist && (
         <motion.div
-          className="fixed inset-0 z-50 grid place-items-center bg-[rgba(4,24,32,.6)] p-4 backdrop-blur-xl"
+          className="fixed inset-0 z-50 grid place-items-center bg-[rgba(4,24,32,.75)] p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.4 }}

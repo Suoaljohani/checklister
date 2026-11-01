@@ -44,7 +44,7 @@ export function Modal({
           aria-modal="true"
           aria-label={title}
         >
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-[6px]" onClick={onClose} aria-hidden />
+          <div className="absolute inset-0 bg-black/60" onClick={onClose} aria-hidden />
           <motion.div
             className={`glass-strong relative flex max-h-[92dvh] w-full flex-col rounded-b-none sm:rounded-b-[22px] ${wide ? "max-w-3xl" : "max-w-lg"}`}
             initial={{ y: 40, opacity: 0, scale: 0.98 }}
