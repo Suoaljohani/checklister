@@ -1,3 +1,4 @@
+import { erForms } from "./forms";
 import type { Checklist, Department, Settings } from "./types";
 
 const now = "2026-11-01T00:00:00.000Z";
@@ -51,6 +52,7 @@ export const seedChecklists: Checklist[] = [
     active: true,
     created_at: now,
   },
+  ...erForms,
 ];
 
 export const defaultSettings: Settings = {

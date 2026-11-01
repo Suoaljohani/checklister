@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { CircleAlert, Pencil, Search, Trash2 } from "lucide-react";
 import { Modal } from "@/components/modal";
 import type { Checklist, FieldValue, Submission } from "@/lib/types";
-import { currentMonth, cx, formatValue, isOutOfRange, monthRange, zoned } from "@/lib/utils";
+import { currentMonth, cx, formatValue, isOutOfRange, monthRange, shiftOf, zoned } from "@/lib/utils";
 import { useToast } from "../admin-shell";
 import { api, PageTitle, useData } from "../use-data";
 
@@ -20,6 +20,7 @@ export default function RecordsPage() {
   const url = `/api/admin/submissions?signatures=1${chk ? `&checklist=${chk}` : ""}${range ? `&from=${range.from}&to=${range.to}` : ""}`;
   const { data, reload, setData } = useData<Submission[]>(url, 15000);
   const [edit, setEdit] = useState<Submission | null>(null);
+  const [photo, setPhoto] = useState<{ src: string; title: string } | null>(null);
 
   const byId = useMemo(() => new Map((checklists ?? []).map((c) => [c.id, c])), [checklists]);
   const rows = (data ?? []).filter(
@@ -92,7 +93,7 @@ export default function RecordsPage() {
                       <td className="whitespace-nowrap px-4 py-3">
                         <span className="num block font-medium">{z.date}</span>
                         <span className="num text-[12px] text-ink-3">
-                          {z.dayShort} · {z.time}
+                          {z.dayShort} · {z.time} · {shiftOf(r.submitted_at)}
                         </span>
                       </td>
                       <td className="max-w-[220px] px-4 py-3">
@@ -100,17 +101,18 @@ export default function RecordsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1.5">
-                          {c?.fields.map((f) => (
-                            <span
-                              key={f.key}
-                              className={cx(
-                                "num rounded-full px-2 py-0.5 text-[12px]",
-                                isOutOfRange(f, r.values[f.key]) ? "bg-danger/10 font-semibold text-danger" : "bg-white/[0.06]",
-                              )}
-                            >
-                              {formatValue(f, r.values[f.key]) || "—"}
-                            </span>
-                          ))}
+                          {c && <Readings c={c} r={r} />}
+                          {r.photos &&
+                            Object.entries(r.photos).map(([k, src]) => (
+                              <button
+                                key={k}
+                                onClick={() => setPhoto({ src, title: `${c?.fields.find((f) => f.key === k)?.label_en ?? "Photo"} · ${r.employee_name} · ${z.date} ${z.time}` })}
+                                aria-label="View photo"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={src} alt="Attached photo" className="h-9 w-9 rounded-md object-cover ring-1 ring-white/20" />
+                              </button>
+                            ))}
                           {r.flagged && <CircleAlert className="h-4 w-4 text-danger" aria-label="Out of range" />}
                         </div>
                         {r.note && <p className="mt-1 max-w-[240px] truncate text-[12px] text-ink-3">“{r.note}”</p>}
@@ -145,6 +147,11 @@ export default function RecordsPage() {
           {!data && <div className="m-4 h-40 animate-pulse rounded-xl bg-white/[0.06]" />}
         </div>
       </div>
+
+      <Modal open={!!photo} onClose={() => setPhoto(null)} title={photo?.title ?? ""} wide>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {photo && <img src={photo.src} alt="Attached photo" className="mx-auto max-h-[70vh] w-auto rounded-xl" />}
+      </Modal>
 
       <EditRecord
         sub={edit}
@@ -201,20 +208,22 @@ function EditRecord({ sub, checklist, onClose, onSaved }: { sub: Submission | nu
     >
       {form && (
         <div className="flex flex-col gap-4">
-          {checklist?.fields.map((f) => (
+          {checklist?.fields.map((f) => f.type === "heading" ? (
+            <p key={f.key} className="-mb-2 text-[13px] font-semibold text-sky">{f.label_en}</p>
+          ) : (
             <div key={f.key}>
               <label className="label">
                 {f.label_en} {f.unit && <span className="font-normal text-ink-3">({f.unit})</span>}
               </label>
-              {f.type === "yesno" ? (
+              {f.type === "yesno" || f.type === "check" ? (
                 <select
                   className="field sm"
                   value={form.values[f.key] === null || form.values[f.key] === undefined ? "" : String(form.values[f.key])}
                   onChange={(e) => setForm({ ...form, values: { ...form.values, [f.key]: e.target.value === "" ? null : e.target.value === "true" } })}
                 >
                   <option value="">—</option>
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
+                  <option value="true">{f.type === "check" ? "✓ Available" : "Yes"}</option>
+                  <option value="false">{f.type === "check" ? "✗ Missing" : "No"}</option>
                 </select>
               ) : (
                 <input
@@ -245,5 +254,36 @@ function EditRecord({ sub, checklist, onClose, onSaved }: { sub: Submission | nu
         </div>
       )}
     </Modal>
+  );
+}
+
+/** Short summary of a record's values. Item lists show a count plus anything missing. */
+function Readings({ c, r }: { c: Checklist; r: Submission }) {
+  const checks = c.fields.filter((f) => f.type === "check");
+  const missing = checks.filter((f) => r.values[f.key] === false);
+  const others = c.fields.filter((f) => f.type !== "check" && f.type !== "heading");
+  return (
+    <>
+      {checks.length > 0 && (
+        <span className={cx("num rounded-full px-2 py-0.5 text-[12px]", missing.length ? "bg-danger/10 font-semibold text-danger" : "bg-white/[0.06]")}>
+          {checks.length - missing.length}/{checks.length} ✓
+        </span>
+      )}
+      {missing.slice(0, 4).map((f) => (
+        <span key={f.key} className="rounded-full bg-danger/10 px-2 py-0.5 text-[12px] font-semibold text-danger">
+          ✗ {f.label_en}
+        </span>
+      ))}
+      {missing.length > 4 && <span className="text-[12px] text-danger">+{missing.length - 4} more</span>}
+      {others.slice(0, 8).map((f) => {
+        const v = r.values[f.key];
+        const bad = isOutOfRange(f, v) || (f.type === "yesno" && v === false);
+        return (
+          <span key={f.key} className={cx("num rounded-full px-2 py-0.5 text-[12px]", bad ? "bg-danger/10 font-semibold text-danger" : "bg-white/[0.06]")} title={f.label_en}>
+            {formatValue(f, v) || "—"}
+          </span>
+        );
+      })}
+    </>
   );
 }

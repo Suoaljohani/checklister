@@ -1,4 +1,5 @@
-export type FieldType = "number" | "text" | "select" | "yesno";
+/** check = item present ✓ / missing ✗; heading = section title only (no value). */
+export type FieldType = "number" | "text" | "select" | "yesno" | "check" | "heading";
 
 export type Field = {
   key: string;
@@ -10,6 +11,10 @@ export type Field = {
   max?: number | null;
   required: boolean;
   options?: string[];
+  /** Expected quantity printed next to the item, e.g. "2 each". */
+  qty?: string;
+  /** check / yesno: open the camera when ticked and attach the photo. */
+  photo?: boolean;
 };
 
 export type Department = {
@@ -34,6 +39,8 @@ export type Checklist = {
   range_note: string;
   footer_note: string;
   orientation: "portrait" | "landscape";
+  /** Report style. table = one row per entry; grid = items down the side, entries across (like the paper forms). */
+  layout?: "table" | "grid" | null;
   sort: number;
   active: boolean;
   created_at: string;
@@ -50,6 +57,8 @@ export type Submission = {
   submitted_at: string;
   values: Record<string, FieldValue>;
   signature: string;
+  /** Photos taken for fields, keyed by field key (JPEG data URLs). Left out of list views. */
+  photos?: Record<string, string>;
   flagged: boolean;
   note: string;
 };

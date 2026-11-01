@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import { isAdmin, unauthorized } from "@/lib/auth";
 import { store } from "@/lib/store";
-import type { Stats } from "@/lib/types";
+import type { Checklist, FieldValue, Stats } from "@/lib/types";
 import { formatValue, zoned } from "@/lib/utils";
 
 const DAY = 86400e3;
@@ -86,10 +86,21 @@ export async function GET() {
         employee_name: x.employee_name,
         submitted_at: x.submitted_at,
         flagged: x.flagged,
-        summary: c ? c.fields.map((f) => formatValue(f, x.values[f.key])).filter(Boolean).join(" · ") : "",
+        summary: c ? summarize(c, x.values) : "",
       };
     }),
     top_staff: [...staff.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count })),
   };
   return Response.json(stats);
+}
+
+function summarize(c: Checklist, values: Record<string, FieldValue>) {
+  const checks = c.fields.filter((f) => f.type === "check");
+  const parts: string[] = [];
+  if (checks.length) {
+    const missing = checks.filter((f) => values[f.key] === false).length;
+    parts.push(`${checks.length - missing}/${checks.length} ✓${missing ? ` · ${missing} missing` : ""}`);
+  }
+  for (const f of c.fields) if (f.type !== "check" && f.type !== "heading") parts.push(formatValue(f, values[f.key]));
+  return parts.filter(Boolean).slice(0, 6).join(" · ");
 }

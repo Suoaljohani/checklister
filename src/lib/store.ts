@@ -180,7 +180,7 @@ class FileStore implements Store {
       )
       .sort((a, b) => (a.submitted_at < b.submitted_at ? 1 : -1))
       .slice(0, q.limit ?? 5000);
-    return q.withSignature ? rows : rows.map((r) => ({ ...r, signature: "" }));
+    return q.withSignature ? rows : rows.map((r) => ({ ...r, signature: "", photos: {} }));
   }
   async getSettings() {
     const db = await this.read();
