@@ -96,15 +96,15 @@ export const PaperPage = forwardRef<
       <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8, tableLayout: "fixed" }}>
         <thead>
           <tr>
-            <th style={{ ...th, width: "15%" }}>
+            <th style={{ ...th, width: "13%" }}>
               DATE
               <div style={{ fontFamily: arabic, fontWeight: 400, fontSize: 11 }}>التاريخ</div>
             </th>
-            <th style={{ ...th, width: "12%" }}>
+            <th style={{ ...th, width: "10%" }}>
               DAY
               <div style={{ fontFamily: arabic, fontWeight: 400, fontSize: 11 }}>اليوم</div>
             </th>
-            <th style={{ ...th, width: "12%" }}>
+            <th style={{ ...th, width: "10%" }}>
               TIME
               <div style={{ fontFamily: arabic, fontWeight: 400, fontSize: 11 }}>الوقت</div>
             </th>
@@ -114,7 +114,11 @@ export const PaperPage = forwardRef<
                 {f.label_ar && <div style={{ fontFamily: arabic, fontWeight: 400, fontSize: 11 }}>{f.label_ar}</div>}
               </th>
             ))}
-            <th style={{ ...th, width: "20%" }}>
+            <th style={{ ...th, width: "18%" }}>
+              NAME
+              <div style={{ fontFamily: arabic, fontWeight: 400, fontSize: 11 }}>الاسم</div>
+            </th>
+            <th style={{ ...th, width: "14%" }}>
               SIGNATURE
               <div style={{ fontFamily: arabic, fontWeight: 400, fontSize: 11 }}>التوقيع</div>
             </th>
@@ -132,6 +136,7 @@ export const PaperPage = forwardRef<
                     <td key={f.key} style={td} />
                   ))}
                   <td style={td} />
+                  <td style={td} />
                 </tr>
               );
             const z = zoned(r.submitted_at);
@@ -145,13 +150,11 @@ export const PaperPage = forwardRef<
                     {formatValue(f, r.values[f.key])}
                   </td>
                 ))}
+                <td style={{ ...td, fontSize: 11, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.employee_name}</td>
                 <td style={{ ...td, padding: "1px 4px" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, height: P.rowH - 2 }}>
-                    {r.signature && <img src={r.signature} alt="" style={{ maxHeight: P.rowH - 3, maxWidth: "62%", objectFit: "contain" }} />}
-                    <span style={{ fontSize: 8.5, color: "#555", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "45%" }}>
-                      {r.employee_name}
-                    </span>
-                  </div>
+                  {r.signature && (
+                    <img src={r.signature} alt="" style={{ display: "block", margin: "0 auto", maxHeight: P.rowH - 3, maxWidth: "100%", objectFit: "contain" }} />
+                  )}
                 </td>
               </tr>
             );

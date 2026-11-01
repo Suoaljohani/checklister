@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, useAnimationControls } from "motion/react";
-import { ArrowLeft, Check, Pencil, UserRound } from "lucide-react";
+import { ArrowLeft, Check, Pencil, Signature, UserRound } from "lucide-react";
 import { Wordmark } from "@/components/brand";
 import { LiveClock, useNow } from "@/components/clock";
 import { Icon } from "@/components/icon";
 import { EASE, Rise } from "@/components/motion";
-import { greeting, useStaff } from "@/components/staff";
+import { clearSavedSignature, getSavedSignature, greeting, useStaff } from "@/components/staff";
 import { LAST_DEPT, StaffNav } from "@/components/staff-nav";
 import type { Checklist, Department } from "@/lib/types";
 
@@ -27,6 +27,12 @@ export function DepartmentView() {
   const nameRef = useRef<HTMLInputElement>(null);
   const shake = useAnimationControls();
   const now = useNow(60_000);
+  const [hasSig, setHasSig] = useState(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read browser storage after mount
+    setHasSig(staff ? !!getSavedSignature(staff.name) : false);
+  }, [staff]);
 
   useEffect(() => {
     fetch(`/api/public/departments/${slug}`)
@@ -46,6 +52,7 @@ export function DepartmentView() {
       nudge();
       return;
     }
+    if (staff && staff.name.trim().toLowerCase() !== name.trim().toLowerCase()) clearSavedSignature();
     setStaff({ name: name.trim(), no: no.trim() });
     setEditing(false);
   }
@@ -125,6 +132,18 @@ export function DepartmentView() {
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] text-ink-3">{now ? greeting(now) : "Welcome"},</p>
                 <p className="truncate text-[18px] font-semibold">{staff.name}</p>
+                {hasSig && (
+                  <button
+                    className="mt-0.5 flex items-center gap-1 text-[12px] text-ink-3 underline-offset-2 hover:underline"
+                    onClick={() => {
+                      if (!confirm("Remove your saved signature from this phone?")) return;
+                      clearSavedSignature();
+                      setHasSig(false);
+                    }}
+                  >
+                    <Signature className="h-3.5 w-3.5" /> Signature saved · Remove
+                  </button>
+                )}
               </div>
               <button
                 className="btn btn-ghost btn-sm"
