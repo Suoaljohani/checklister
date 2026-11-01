@@ -7,6 +7,7 @@ import { Icon, ICONS } from "@/components/icon";
 import { Modal } from "@/components/modal";
 import { EASE } from "@/components/motion";
 import type { Checklist, Department, Field } from "@/lib/types";
+import { TEMPLATES, type Template } from "@/lib/templates";
 import { cx, rangeLabel } from "@/lib/utils";
 import { useToast } from "../admin-shell";
 import { api, PageTitle, useData } from "../use-data";
@@ -159,15 +160,33 @@ function Editor({ draft, deps, onClose, onSaved }: { draft: Draft | null; deps: 
   const [src, setSrc] = useState<Draft | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [picked, setPicked] = useState("");
   if (draft !== src) {
     setSrc(draft);
     setD(draft);
     setErr("");
+    setPicked("");
   }
   if (!d) return <Modal open={false} onClose={onClose} title="">{null}</Modal>;
 
   const fields = d.fields as (Field & { _k?: string })[];
   const setField = (i: number, patch: Partial<Field>) => setD({ ...d, fields: fields.map((f, k) => (k === i ? { ...f, ...patch } : f)) });
+
+  function applyTemplate(t: Template | null) {
+    if (!d || !draft) return;
+    setPicked(t?.name ?? "");
+    if (!t) return setD({ ...draft });
+    setD({
+      ...d,
+      title_en: t.title_en,
+      title_ar: t.title_ar,
+      icon: t.icon,
+      color: t.color,
+      range_note: t.range_note,
+      orientation: t.orientation,
+      fields: t.fields.map((f) => ({ ...f, options: f.options && [...f.options], _k: Math.random().toString(36).slice(2) })),
+    });
+  }
 
   async function save() {
     if (!d) return;
@@ -204,6 +223,31 @@ function Editor({ draft, deps, onClose, onSaved }: { draft: Draft | null; deps: 
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
+        {!d.id && (
+          <div className="sm:col-span-2">
+            <label className="label">Start from a template</label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => applyTemplate(null)}
+                className={cx("btn btn-sm border", !picked ? "border-blue/40 bg-blue/10 text-blue" : "border-ink/10 bg-white/[0.06] text-ink-2")}
+              >
+                <Plus className="h-3.5 w-3.5" /> Blank
+              </button>
+              {TEMPLATES.map((t) => (
+                <button
+                  key={t.name}
+                  type="button"
+                  onClick={() => applyTemplate(t)}
+                  className={cx("btn btn-sm border", picked === t.name ? "border-blue/40 bg-blue/10 text-blue" : "border-ink/10 bg-white/[0.06] text-ink-2")}
+                >
+                  <Icon name={t.icon} className="h-3.5 w-3.5" /> {t.name}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[12px] text-ink-3">Fills in the title, fields and normal ranges. You can change anything before saving. Check the ranges match your hospital policy.</p>
+          </div>
+        )}
         <div className="sm:col-span-2">
           <label className="label">Title (English)</label>
           <input className="field sm" value={d.title_en} onChange={(e) => setD({ ...d, title_en: e.target.value })} placeholder="Daily Temperature Check for Refrigerator" />

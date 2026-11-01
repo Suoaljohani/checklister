@@ -221,13 +221,14 @@ export async function exportWord(r: ReportInput) {
         headCell("DAY", "اليوم"),
         headCell("TIME", "الوقت"),
         ...c.fields.map((f) => headCell(f.label_en.toUpperCase(), f.label_ar)),
+        headCell("NAME", "الاسم"),
         headCell("SIGNATURE", "التوقيع"),
       ],
     }),
   ];
   for (const s of r.rows) {
     const z = zoned(s.submitted_at);
-    let sig: InstanceType<typeof TableCell>;
+    let sig = cell("");
     if (s.signature) {
       const { w, h } = await imageSize(s.signature);
       const H = 22;
@@ -242,18 +243,17 @@ export async function exportWord(r: ReportInput) {
               new ImageRun({ type: "png", data: b64ToBytes(s.signature), transformation: { width: Math.round(Math.min(80, (w / h) * H)), height: H } }),
             ],
           }),
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [new TextRun({ text: s.employee_name, size: 12, font, color: "666666" })] }),
         ],
       });
-    } else sig = cell(s.employee_name);
+    }
     rows.push(
       new TableRow({
         height: { value: 380, rule: "atLeast" },
-        children: [cell(z.date), cell(z.dayShort), cell(z.time), ...c.fields.map((f) => cell(formatValue(f, s.values[f.key]), isOutOfRange(f, s.values[f.key]))), sig],
+        children: [cell(z.date), cell(z.dayShort), cell(z.time), ...c.fields.map((f) => cell(formatValue(f, s.values[f.key]), isOutOfRange(f, s.values[f.key]))), cell(s.employee_name), sig],
       }),
     );
   }
-  for (let i = r.rows.length; i < 5; i++) rows.push(new TableRow({ height: { value: 380, rule: "atLeast" }, children: Array.from({ length: c.fields.length + 4 }, () => cell("")) }));
+  for (let i = r.rows.length; i < 5; i++) rows.push(new TableRow({ height: { value: 380, rule: "atLeast" }, children: Array.from({ length: c.fields.length + 5 }, () => cell("")) }));
 
   const [y, m] = r.month.split("-");
   const doc = new Document({
