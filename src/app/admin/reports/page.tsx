@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { FileSpreadsheet, FileText, FileType2, LoaderCircle } from "lucide-react";
-import { PAGE, paginate, PaperPage, type ReportInput } from "@/components/paper-form";
+import { PAGE, ReportPage, reportPages, type ReportInput } from "@/components/paper-form";
 import { EASE } from "@/components/motion";
 import type { Checklist, Department, Settings, Submission } from "@/lib/types";
 import { currentMonth, monthRange } from "@/lib/utils";
@@ -44,7 +44,7 @@ export default function ReportsPage() {
     [checklist, settings, subs, deps, month],
   );
   const P = checklist ? PAGE[checklist.orientation] : PAGE.portrait;
-  const pages = input ? paginate(input.rows, P.rows) : [];
+  const pages = useMemo(() => (input ? reportPages(input) : []), [input]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -103,7 +103,7 @@ export default function ReportsPage() {
 
       <div ref={wrapRef} className="flex flex-col items-center gap-5">
         {input &&
-          pages.map((rows, i) => (
+          pages.map((page, i) => (
             <motion.div
               key={`${chkId}-${month}-${i}`}
               initial={{ opacity: 0, y: 16 }}
@@ -113,12 +113,12 @@ export default function ReportsPage() {
               style={{ width: P.w * scale, height: P.h * scale }}
             >
               <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: P.w, height: P.h }}>
-                <PaperPage
+                <ReportPage
                   ref={(el) => {
                     pageRefs.current[i] = el;
                   }}
                   {...input}
-                  pageRows={rows}
+                  page={page}
                   index={i}
                   total={pages.length}
                 />

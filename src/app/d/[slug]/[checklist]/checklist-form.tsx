@@ -2,16 +2,17 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, CalendarDays, CircleAlert, CircleCheck, Clock3, Lock, Sun, UserRound } from "lucide-react";
+import { ArrowLeft, Camera, CalendarDays, Check, CheckCheck, CircleAlert, CircleCheck, Clock3, Lock, RotateCcw, Sun, UserRound, X } from "lucide-react";
+import { HospitalBadge } from "@/components/brand";
 import { useNow } from "@/components/clock";
 import { Icon } from "@/components/icon";
 import { EASE, Rise } from "@/components/motion";
 import { SignatureSheet } from "@/components/signature-sheet";
 import { useStaff } from "@/components/staff";
 import type { Checklist, Department, Field, FieldValue } from "@/lib/types";
-import { cx, isOutOfRange, rangeLabel, zoned } from "@/lib/utils";
+import { cx, isOutOfRange, rangeLabel, shiftOf, zoned } from "@/lib/utils";
 
 type Data = { checklist: Checklist; department: Department };
 
@@ -24,6 +25,7 @@ export function ChecklistForm() {
   const [missing, setMissing] = useState(false);
   const [values, setValues] = useState<Record<string, FieldValue>>({});
   const [note, setNote] = useState("");
+  const [photos, setPhotos] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [signing, setSigning] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -44,15 +46,37 @@ export function ChecklistForm() {
   const set = (k: string, v: FieldValue) => {
     setValues((s) => ({ ...s, [k]: v }));
     setErrors((e) => ({ ...e, [k]: false }));
+    if (v !== true)
+      setPhotos((p) => {
+        if (!(k in p)) return p;
+        const next = { ...p };
+        delete next[k];
+        return next;
+      });
   };
+  const setPhoto = (k: string, png: string) => {
+    setPhotos((p) => ({ ...p, [k]: png }));
+    setErrors((e) => ({ ...e, [k]: false }));
+  };
+
+  const checks = data?.checklist.fields.filter((f) => f.type === "check") ?? [];
+  const checkedCount = checks.filter((f) => values[f.key] !== undefined && values[f.key] !== null).length;
+  function markAllOk() {
+    const next: Record<string, FieldValue> = {};
+    for (const f of checks) if (!f.photo && (values[f.key] === undefined || values[f.key] === null)) next[f.key] = true;
+    setValues((s) => ({ ...s, ...next }));
+    setErrors((e) => Object.fromEntries(Object.entries(e).filter(([k]) => !(k in next))));
+  }
 
   function review(e: React.FormEvent) {
     e.preventDefault();
     if (!data) return;
     const bad: Record<string, boolean> = {};
     for (const f of data.checklist.fields) {
+      if (f.type === "heading") continue;
       const v = values[f.key];
       if (f.required && (v === undefined || v === null || v === "")) bad[f.key] = true;
+      if (f.photo && v === true && !photos[f.key]) bad[f.key] = true;
       if (f.type === "number" && v !== undefined && v !== null && v !== "" && Number.isNaN(Number(v))) bad[f.key] = true;
     }
     setErrors(bad);
@@ -80,6 +104,7 @@ export function ChecklistForm() {
           employee_no: staff.no,
           values,
           signature,
+          photos,
           note,
         }),
       });
@@ -116,7 +141,8 @@ export function ChecklistForm() {
         <Link href={`/d/${slug}`} className="btn btn-ghost btn-sm btn-icon" aria-label="Back">
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <p className="truncate text-[14px] text-ink-3">{data?.department.name_en ?? ""}</p>
+        <p className="min-w-0 flex-1 truncate text-[14px] text-ink-3">{data?.department.name_en ?? ""}</p>
+        <HospitalBadge size={34} />
       </header>
 
       <Rise className="flex items-start gap-4 pb-6 pt-2">
@@ -162,14 +188,64 @@ export function ChecklistForm() {
             <UserRound className="h-4 w-4 text-ink-3" />
             <span className="text-ink-3">Checked by</span>
             <span className="truncate font-semibold">{staff?.name ?? "—"}</span>
+            {now && (
+              <span className="ml-auto shrink-0 rounded-full bg-white/[0.08] px-2 py-0.5 text-[12px] font-semibold text-ink-2">
+                Shift {shiftOf(now)}
+              </span>
+            )}
           </div>
         </Rise>
 
         <Rise i={2} className="glass flex flex-col gap-5 p-4 sm:p-5">
-          <p className="eyebrow">Readings</p>
-          {c?.fields.map((f) => (
-            <FieldInput key={f.key} f={f} value={values[f.key]} error={errors[f.key]} onChange={(v) => set(f.key, v)} />
-          ))}
+          <div className="flex items-center justify-between gap-3">
+            <p className="eyebrow">{checks.length ? "Items" : "Readings"}</p>
+            {checks.length >= 3 && (
+              <div className="flex items-center gap-2">
+                <span className="num text-[12px] text-ink-3">
+                  {checkedCount}/{checks.length}
+                </span>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={markAllOk} disabled={checkedCount === checks.length}>
+                  <CheckCheck className="h-4 w-4" /> Mark all OK
+                </button>
+              </div>
+            )}
+          </div>
+          {c && groupFields(c.fields).map((g) =>
+            g.checks ? (
+              <div key={g.checks[0].key} className="-mt-2 flex flex-col gap-1.5">
+                {g.checks.map((f) => (
+                  <CheckRow
+                    key={f.key}
+                    f={f}
+                    value={values[f.key]}
+                    error={errors[f.key]}
+                    photo={photos[f.key]}
+                    onChange={(v) => set(f.key, v)}
+                    onPhoto={(p) => setPhoto(f.key, p)}
+                  />
+                ))}
+              </div>
+            ) : g.field.type === "heading" ? (
+              <div key={g.field.key} className="-mb-2 mt-1 flex items-baseline justify-between gap-2 border-b border-ink/10 pb-1.5">
+                <p className="text-[14px] font-semibold text-sky">{g.field.label_en}</p>
+                {g.field.label_ar && (
+                  <p className="text-[13px] text-ink-3" dir="rtl">
+                    {g.field.label_ar}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <FieldInput
+                key={g.field.key}
+                f={g.field}
+                value={values[g.field.key]}
+                error={errors[g.field.key]}
+                photo={photos[g.field.key]}
+                onChange={(v) => set(g.field.key, v)}
+                onPhoto={(p) => setPhoto(g.field.key, p)}
+              />
+            ),
+          )}
           {!c && <div className="h-24 animate-pulse rounded-xl bg-white/[0.06]" />}
           <div>
             <label htmlFor="note" className="label">
@@ -232,7 +308,169 @@ function AutoCell({ icon, label, ar, value, live }: { icon: React.ReactNode; lab
   );
 }
 
-function FieldInput({ f, value, error, onChange }: { f: Field; value: FieldValue | undefined; error?: boolean; onChange: (v: FieldValue) => void }) {
+function groupFields(fields: Field[]) {
+  const out: ({ checks: Field[]; field?: undefined } | { field: Field; checks?: undefined })[] = [];
+  for (const f of fields) {
+    const last = out[out.length - 1];
+    if (f.type === "check") {
+      if (last?.checks) last.checks.push(f);
+      else out.push({ checks: [f] });
+    } else out.push({ field: f });
+  }
+  return out;
+}
+
+/** Hidden camera input. Phones open the rear camera directly. */
+function useCamera(onPhoto: (jpeg: string) => void) {
+  const ref = useRef<HTMLInputElement>(null);
+  const input = (
+    <input
+      ref={ref}
+      type="file"
+      accept="image/*"
+      capture="environment"
+      className="hidden"
+      onChange={async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (file) onPhoto(await compress(file));
+      }}
+    />
+  );
+  return { open: () => ref.current?.click(), input };
+}
+
+async function compress(file: File) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.naturalWidth * scale);
+    c.height = Math.round(img.naturalHeight * scale);
+    c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+    let q = 0.75;
+    let out = c.toDataURL("image/jpeg", q);
+    while (out.length > 850_000 && q > 0.3) out = c.toDataURL("image/jpeg", (q -= 0.15));
+    return out;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function PhotoPreview({ src, onRetake }: { src?: string; onRetake: () => void }) {
+  return (
+    <AnimatePresence initial={false}>
+      {src && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.3, ease: EASE }}
+          className="overflow-hidden"
+        >
+          <div className="mt-2 flex items-center gap-3 rounded-xl bg-white/[0.06] p-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src} alt="Attached photo" className="h-16 w-16 rounded-lg object-cover" />
+            <span className="flex-1 text-[13px] text-green">Photo attached</span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onRetake}>
+              <RotateCcw className="h-3.5 w-3.5" /> Retake
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function CheckRow({
+  f,
+  value,
+  error,
+  photo,
+  onChange,
+  onPhoto,
+}: {
+  f: Field;
+  value: FieldValue | undefined;
+  error?: boolean;
+  photo?: string;
+  onChange: (v: FieldValue) => void;
+  onPhoto: (p: string) => void;
+}) {
+  const cam = useCamera(onPhoto);
+  const needPhoto = f.photo && value === true && !photo;
+  return (
+    <div id={`f-${f.key}`} tabIndex={-1} className={cx("rounded-xl border px-3 py-2", error ? "border-danger/50 bg-danger/[0.06]" : "border-transparent bg-white/[0.05]")}>
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[14px] font-medium leading-snug">
+            {f.label_en}
+            {f.photo && <Camera className="ml-1.5 inline h-3.5 w-3.5 text-ink-3" aria-label="Photo needed" />}
+          </p>
+          {(f.label_ar || f.qty) && (
+            <p className="mt-0.5 text-[12px] text-ink-3">
+              {f.qty && <span className="num">Qty {f.qty}</span>}
+              {f.qty && f.label_ar && " · "}
+              {f.label_ar}
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 gap-1.5" role="radiogroup" aria-label={f.label_en}>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={value === true}
+            aria-label="OK"
+            onClick={() => {
+              onChange(true);
+              if (f.photo && !photo) cam.open();
+            }}
+            className={cx("grid h-10 w-11 place-items-center rounded-xl border transition-colors", value === true ? "border-green/40 bg-green/15 text-green" : "border-ink/10 bg-white/[0.04] text-ink-3")}
+          >
+            {f.photo ? <Camera className="h-5 w-5" strokeWidth={2.2} /> : <Check className="h-5 w-5" strokeWidth={2.6} />}
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={value === false}
+            aria-label="Missing"
+            onClick={() => onChange(false)}
+            className={cx("grid h-10 w-11 place-items-center rounded-xl border transition-colors", value === false ? "border-danger/40 bg-danger/12 text-danger" : "border-ink/10 bg-white/[0.04] text-ink-3")}
+          >
+            <X className="h-5 w-5" strokeWidth={2.6} />
+          </button>
+        </div>
+      </div>
+      {cam.input}
+      {needPhoto && (
+        <button type="button" className="btn btn-primary btn-sm mt-2 w-full" onClick={cam.open}>
+          <Camera className="h-4 w-4" /> Take photo
+        </button>
+      )}
+      <PhotoPreview src={photo} onRetake={cam.open} />
+    </div>
+  );
+}
+
+function FieldInput({
+  f,
+  value,
+  error,
+  photo,
+  onChange,
+  onPhoto,
+}: {
+  f: Field;
+  value: FieldValue | undefined;
+  error?: boolean;
+  photo?: string;
+  onChange: (v: FieldValue) => void;
+  onPhoto: (p: string) => void;
+}) {
+  const cam = useCamera(onPhoto);
   const id = `f-${f.key}`;
   const out = isOutOfRange(f, value ?? null);
   const has = value !== undefined && value !== null && value !== "";
@@ -286,7 +524,10 @@ function FieldInput({ f, value, error, onChange }: { f: Field; value: FieldValue
               key={String(o.v)}
               role="radio"
               aria-checked={value === o.v}
-              onClick={() => onChange(o.v)}
+              onClick={() => {
+                onChange(o.v);
+                if (o.v && f.photo && !photo) cam.open();
+              }}
               className={cx(
                 "btn h-[52px] border",
                 value === o.v
@@ -302,9 +543,20 @@ function FieldInput({ f, value, error, onChange }: { f: Field; value: FieldValue
         </div>
       )}
 
+      {f.photo && (
+        <>
+          {cam.input}
+          {value === true && !photo && (
+            <button type="button" className="btn btn-primary btn-sm mt-2 w-full" onClick={cam.open}>
+              <Camera className="h-4 w-4" /> Take photo
+            </button>
+          )}
+          <PhotoPreview src={photo} onRetake={cam.open} />
+        </>
+      )}
       <AnimatePresence initial={false} mode="wait">
         {error ? (
-          <Msg key="err" tone="danger" text={`${f.label_en} is required`} />
+          <Msg key="err" tone="danger" text={f.photo && value === true && !photo ? "Please take a photo" : `${f.label_en} is required`} />
         ) : f.type === "number" && has && range ? (
           out ? (
             <Msg key="out" tone="warn" text={`Outside the normal range (${range}). It will be flagged for review.`} />
@@ -409,8 +661,9 @@ function Success({
                 {z?.day} · {z?.date} · {z?.time}
               </p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
+                <CheckSummary checklist={checklist} values={values} />
                 {checklist.fields
-                  .filter((f) => values[f.key] !== undefined && values[f.key] !== "")
+                  .filter((f) => f.type !== "check" && f.type !== "heading" && values[f.key] !== undefined && values[f.key] !== null && values[f.key] !== "")
                   .map((f) => (
                     <span
                       key={f.key}
@@ -425,7 +678,7 @@ function Success({
               </div>
               {done.flagged && (
                 <p className="mt-4 rounded-xl bg-warn/12 px-3 py-2 text-[13px] text-warn">
-                  A reading was outside the normal range. Please inform the charge nurse.
+                  A reading was outside the normal range or an item is missing. Please inform the charge nurse.
                 </p>
               )}
               <Link href={`/d/${slug}`} className="btn btn-primary mt-6 w-full">
@@ -436,5 +689,23 @@ function Success({
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+function CheckSummary({ checklist, values }: { checklist: Checklist; values: Record<string, FieldValue> }) {
+  const checks = checklist.fields.filter((f) => f.type === "check");
+  if (!checks.length) return null;
+  const missing = checks.filter((f) => values[f.key] === false);
+  return (
+    <>
+      <span className="num rounded-full bg-green/12 px-3 py-1 text-[13px] font-semibold text-green">
+        {checks.length - missing.length}/{checks.length} OK
+      </span>
+      {missing.map((f) => (
+        <span key={f.key} className="rounded-full bg-warn/15 px-3 py-1 text-[13px] font-semibold text-warn">
+          Missing: {f.label_en}
+        </span>
+      ))}
+    </>
   );
 }

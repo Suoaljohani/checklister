@@ -58,12 +58,15 @@ export function isOutOfRange(f: Field, v: FieldValue) {
 }
 
 export function isFlagged(c: Checklist, values: Record<string, FieldValue>) {
-  return c.fields.some((f) => isOutOfRange(f, values[f.key]) || (f.type === "yesno" && values[f.key] === false));
+  return c.fields.some(
+    (f) => isOutOfRange(f, values[f.key]) || ((f.type === "yesno" || f.type === "check") && values[f.key] === false),
+  );
 }
 
 export function formatValue(f: Field, v: FieldValue) {
   if (v === null || v === undefined || v === "") return "";
   if (f.type === "yesno") return v ? "Yes" : "No";
+  if (f.type === "check") return v ? "✓" : "✗";
   if (f.type === "number") return `${v}${f.unit ? (f.unit === "%" ? "%" : ` ${f.unit}`) : ""}`;
   return String(v);
 }
@@ -75,4 +78,22 @@ export function rangeLabel(f: Field) {
   if (f.max != null) return `≤ ${f.max}${u}`;
   if (f.min != null) return `≥ ${f.min}${u}`;
   return "";
+}
+
+/** Fields that hold a value (everything except section headings). */
+export function valueFields(c: Checklist) {
+  return c.fields.filter((f) => f.type !== "heading");
+}
+
+/** Paper-style grid report: items down the side, entries across. */
+export function isGrid(c: Checklist) {
+  if (c.layout) return c.layout === "grid";
+  return c.fields.some((f) => f.type === "heading") || valueFields(c).length > 6;
+}
+
+/** Shift letter for a time: M 7:00–14:59, A 15:00–22:59, N 23:00–6:59 (hospital time). */
+export function shiftOf(iso: string | Date, tz = TZ) {
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "numeric", hourCycle: "h23" }).format(d));
+  return h >= 7 && h < 15 ? "M" : h >= 15 && h < 23 ? "A" : "N";
 }

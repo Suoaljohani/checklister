@@ -110,7 +110,9 @@ export default function ChecklistsPage() {
                 <p className="font-semibold leading-snug">{c.title_en}</p>
                 <p className="mt-0.5 text-[13px] text-ink-3">
                   {deps?.find((d) => d.id === c.department_id)?.name_en ?? "—"} ·{" "}
-                  {c.fields.map((f) => `${f.label_en}${rangeLabel(f) ? ` (${rangeLabel(f)})` : ""}`).join(", ")}
+                  {c.fields.filter((f) => f.type !== "heading").length > 6
+                    ? `${c.fields.filter((f) => f.type !== "heading").length} items`
+                    : c.fields.map((f) => `${f.label_en}${rangeLabel(f) ? ` (${rangeLabel(f)})` : ""}`).join(", ")}
                 </p>
               </div>
               <div className="flex gap-1.5">
@@ -193,7 +195,7 @@ function Editor({ draft, deps, onClose, onSaved }: { draft: Draft | null; deps: 
     setBusy(true);
     setErr("");
     try {
-      const body = { ...d, fields: fields.map((f) => ({ ...f, _k: undefined })) };
+      const body = { ...d, layout: d.layout ?? null, fields: fields.map((f) => ({ ...f, _k: undefined })) };
       if (d.id) await api(`/api/admin/checklists/${d.id}`, "PATCH", body);
       else await api(`/api/admin/checklists`, "POST", body);
       onSaved(d.id ? "Checklist saved" : "Checklist created");
@@ -283,6 +285,26 @@ function Editor({ draft, deps, onClose, onSaved }: { draft: Draft | null; deps: 
         </div>
 
         <div className="sm:col-span-2">
+          <label className="label">Report style</label>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              [undefined, "Automatic"],
+              ["table", "One row per entry"],
+              ["grid", "Items list (paper grid)"],
+            ] as const).map(([v, l]) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => setD({ ...d, layout: v ?? null })}
+                className={cx("btn btn-sm border", (d.layout ?? undefined) === v ? "border-blue/40 bg-blue/10 text-blue" : "border-ink/10 bg-white/[0.06] text-ink-2")}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="sm:col-span-2">
           <label className="label">Icon</label>
           <div className="grid grid-cols-8 gap-1.5 sm:grid-cols-[repeat(13,minmax(0,1fr))]">
             {Object.keys(ICONS).map((name) => (
@@ -325,7 +347,7 @@ function Editor({ draft, deps, onClose, onSaved }: { draft: Draft | null; deps: 
               <Plus className="h-4 w-4" /> Add field
             </button>
           </div>
-          <p className="mb-3 text-[12px] text-ink-3">Date, day, time, name and signature are added automatically.</p>
+          <p className="mb-3 text-[12px] text-ink-3">Date, day, time, shift, name and signature are added automatically.</p>
           <Reorder.Group axis="y" values={fields} onReorder={(f) => setD({ ...d, fields: f })} className="flex flex-col gap-2">
             {fields.map((f, i) => (
               <Reorder.Item key={f._k ?? f.key} value={f} className="rounded-2xl border border-ink/5 bg-white/[0.06] p-3">
@@ -337,12 +359,14 @@ function Editor({ draft, deps, onClose, onSaved }: { draft: Draft | null; deps: 
                     <option value="text">Text</option>
                     <option value="select">Choice</option>
                     <option value="yesno">Yes / No</option>
+                    <option value="check">Item ✓ / ✗</option>
+                    <option value="heading">Section heading</option>
                   </select>
                   <button
                     type="button"
                     className="btn btn-danger btn-sm btn-icon"
                     onClick={() => setD({ ...d, fields: fields.filter((_, k) => k !== i) })}
-                    disabled={fields.length === 1}
+                    disabled={fields.filter((x) => x.type !== "heading").length === 1 && f.type !== "heading"}
                     aria-label="Remove field"
                   >
                     <X className="h-4 w-4" />
@@ -363,10 +387,23 @@ function Editor({ draft, deps, onClose, onSaved }: { draft: Draft | null; deps: 
                     onChange={(e) => setField(i, { options: e.target.value.split(",").map((s) => s.trimStart()) })}
                   />
                 )}
-                <label className="mt-2 flex items-center gap-2 text-[13px] text-ink-2">
-                  <input type="checkbox" className="h-4 w-4 accent-[#1691d0]" checked={f.required} onChange={(e) => setField(i, { required: e.target.checked })} />
-                  Required
-                </label>
+                {f.type === "check" && (
+                  <input className="field sm mt-2" placeholder="Quantity (e.g. 2 each) — optional" value={f.qty ?? ""} onChange={(e) => setField(i, { qty: e.target.value })} />
+                )}
+                {f.type !== "heading" && (
+                  <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
+                    <label className="flex items-center gap-2 text-[13px] text-ink-2">
+                      <input type="checkbox" className="h-4 w-4 accent-[#1691d0]" checked={f.required} onChange={(e) => setField(i, { required: e.target.checked })} />
+                      Required
+                    </label>
+                    {(f.type === "check" || f.type === "yesno") && (
+                      <label className="flex items-center gap-2 text-[13px] text-ink-2">
+                        <input type="checkbox" className="h-4 w-4 accent-[#1691d0]" checked={!!f.photo} onChange={(e) => setField(i, { photo: e.target.checked })} />
+                        Open the camera when ticked (photo is attached)
+                      </label>
+                    )}
+                  </div>
+                )}
               </Reorder.Item>
             ))}
           </Reorder.Group>

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReportInput } from "@/components/paper-form";
-import { formatValue, isOutOfRange, zoned } from "./utils";
+import { formatValue, isGrid, isOutOfRange, shiftOf, valueFields, zoned } from "./utils";
 
 function fileBase(r: ReportInput) {
   const t = r.checklist.title_en.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 60);
@@ -71,9 +71,10 @@ export async function exportExcel(r: ReportInput) {
     views: [{ showGridLines: false }],
   });
   const c = r.checklist;
-  const cols = ["Date", "Day", "Time", ...c.fields.map((f) => (f.unit ? `${f.label_en} (${f.unit})` : f.label_en)), "Staff name", "Employee no.", "Note", "Status", "Signature"];
+  const fields = valueFields(c);
+  const cols = ["Date", "Day", "Time", "Shift", ...fields.map((f) => (f.unit ? `${f.label_en} (${f.unit})` : f.label_en)), "Staff name", "Employee no.", "Note", "Status", "Signature"];
   const nCols = cols.length;
-  ws.columns = cols.map((_, i) => ({ width: i === nCols - 1 ? 22 : i === nCols - 3 ? 28 : i < 3 ? 13 : 16 }));
+  ws.columns = cols.map((_, i) => ({ width: i === nCols - 1 ? 22 : i === nCols - 3 ? 28 : i === 3 ? 7 : i < 3 ? 13 : 16 }));
 
   const logo = await logoPng(200);
   const logoId = wb.addImage({ base64: logo.data, extension: "png" });
@@ -120,7 +121,8 @@ export async function exportExcel(r: ReportInput) {
       z.date,
       z.day,
       z.time,
-      ...c.fields.map((f) => {
+      shiftOf(s.submitted_at),
+      ...fields.map((f) => {
         const v = s.values[f.key];
         return f.type === "number" && typeof v === "number" ? v : formatValue(f, v);
       }),
@@ -135,8 +137,9 @@ export async function exportExcel(r: ReportInput) {
       cell.border = { top: thin, bottom: thin, left: thin, right: thin };
       cell.alignment = { vertical: "middle", horizontal: i === nCols - 2 ? "left" : "center", wrapText: true };
     });
-    c.fields.forEach((f, i) => {
-      if (isOutOfRange(f, s.values[f.key])) row.getCell(4 + i).font = { bold: true, color: { argb: "FFB4232F" } };
+    fields.forEach((f, i) => {
+      const v = s.values[f.key];
+      if (isOutOfRange(f, v) || ((f.type === "check" || f.type === "yesno") && v === false)) row.getCell(5 + i).font = { bold: true, color: { argb: "FFB4232F" } };
     });
     if (s.flagged) row.getCell(nCols - 1).font = { bold: true, color: { argb: "FFB4232F" } };
     if (s.signature) {
@@ -213,6 +216,83 @@ export async function exportWord(r: ReportInput) {
   const cell = (text: string, red = false) =>
     new TableCell({ borders, verticalAlign: VerticalAlign.CENTER, children: [p(text, { size: 20, bold: red, color: red ? "B4232F" : undefined })] });
 
+  const fields = valueFields(c);
+  const isBad = (f: (typeof fields)[number], v: (typeof r.rows)[number]["values"][string]) =>
+    isOutOfRange(f, v) || ((f.type === "check" || f.type === "yesno") && v === false);
+
+  const sigCell = async (png: string, maxW: number, H: number) => {
+    if (!png) return cell("");
+    const { w, h } = await imageSize(png);
+    return new TableCell({
+      borders,
+      verticalAlign: VerticalAlign.CENTER,
+      children: [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 0 },
+          children: [new ImageRun({ type: "png", data: b64ToBytes(png), transformation: { width: Math.round(Math.min(maxW, (w / h) * H)), height: H } })],
+        }),
+      ],
+    });
+  };
+
+  /* Items down the side, entries across, in blocks like the paper form. */
+  const gridTables = async () => {
+    const per = landscape ? 12 : 8;
+    const small = (t: string, o: { bold?: boolean; red?: boolean; left?: boolean; fill?: string; span?: number } = {}) =>
+      new TableCell({
+        borders,
+        columnSpan: o.span,
+        verticalAlign: VerticalAlign.CENTER,
+        shading: o.fill ? { fill: o.fill } : undefined,
+        children: [p(t, { size: 15, bold: o.bold || o.red, color: o.red ? "B4232F" : undefined, align: o.left ? AlignmentType.LEFT : AlignmentType.CENTER })],
+      });
+    const hasQty = c.fields.some((f) => f.qty);
+    const out: InstanceType<typeof Table | typeof Paragraph>[] = [];
+    const list = r.rows.length ? r.rows : [];
+    for (let i = 0; i < Math.max(list.length, 1); i += per) {
+      const cols: ((typeof list)[number] | null)[] = list.slice(i, i + per);
+      while (cols.length < per) cols.push(null);
+      const span = cols.length + 1 + (hasQty ? 1 : 0);
+      const trs = [
+        new TableRow({
+          tableHeader: true,
+          children: [
+            small("ITEM", { bold: true, left: true, fill: "EEF4F8" }),
+            ...(hasQty ? [small("QTY", { bold: true, fill: "EEF4F8" })] : []),
+            ...cols.map((s) => small(s ? `${zoned(s.submitted_at).date.slice(0, 5)} ${shiftOf(s.submitted_at)}` : "", { bold: true, fill: "EEF4F8" })),
+          ],
+        }),
+      ];
+      for (const f of c.fields) {
+        if (f.type === "heading") {
+          trs.push(new TableRow({ children: [small(f.label_en.toUpperCase(), { bold: true, fill: "E8EEF2", span })] }));
+          continue;
+        }
+        trs.push(
+          new TableRow({
+            children: [
+              small(f.unit ? `${f.label_en} (${f.unit})` : f.label_en, { left: true }),
+              ...(hasQty ? [small(f.qty ?? "")] : []),
+              ...cols.map((s) => small(s ? (f.type === "number" ? String(s.values[f.key] ?? "") : formatValue(f, s.values[f.key])) : "", { red: !!s && isBad(f, s.values[f.key]) })),
+            ],
+          }),
+        );
+      }
+      trs.push(new TableRow({ children: [small("NAME", { bold: true, left: true }), ...(hasQty ? [small("")] : []), ...cols.map((s) => small(s?.employee_name ?? ""))] }));
+      trs.push(
+        new TableRow({
+          height: { value: 420, rule: "atLeast" },
+          children: [small("STAFF SIGNATURE", { bold: true, left: true }), ...(hasQty ? [small("")] : []), ...(await Promise.all(cols.map((s) => sigCell(s?.signature ?? "", 50, 18))))],
+        }),
+      );
+      if (i > 0) out.push(new Paragraph({ pageBreakBefore: true, children: [] }));
+      out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: trs }));
+    }
+    out.push(p("Shift: M = Morning · A = Afternoon · N = Night   ·   ✓ = available · ✗ = missing", { size: 15, color: "555555" }));
+    return out;
+  };
+
   const rows = [
     new TableRow({
       tableHeader: true,
@@ -220,7 +300,7 @@ export async function exportWord(r: ReportInput) {
         headCell("DATE", "التاريخ"),
         headCell("DAY", "اليوم"),
         headCell("TIME", "الوقت"),
-        ...c.fields.map((f) => headCell(f.label_en.toUpperCase(), f.label_ar)),
+        ...fields.map((f) => headCell(f.label_en.toUpperCase(), f.label_ar)),
         headCell("NAME", "الاسم"),
         headCell("SIGNATURE", "التوقيع"),
       ],
@@ -249,11 +329,11 @@ export async function exportWord(r: ReportInput) {
     rows.push(
       new TableRow({
         height: { value: 380, rule: "atLeast" },
-        children: [cell(z.date), cell(z.dayShort), cell(z.time), ...c.fields.map((f) => cell(formatValue(f, s.values[f.key]), isOutOfRange(f, s.values[f.key]))), cell(s.employee_name), sig],
+        children: [cell(z.date), cell(z.dayShort), cell(z.time), ...fields.map((f) => cell(formatValue(f, s.values[f.key]), isBad(f, s.values[f.key]))), cell(s.employee_name), sig],
       }),
     );
   }
-  for (let i = r.rows.length; i < 5; i++) rows.push(new TableRow({ height: { value: 380, rule: "atLeast" }, children: Array.from({ length: c.fields.length + 5 }, () => cell("")) }));
+  for (let i = r.rows.length; i < 5; i++) rows.push(new TableRow({ height: { value: 380, rule: "atLeast" }, children: Array.from({ length: fields.length + 5 }, () => cell("")) }));
 
   const [y, m] = r.month.split("-");
   const doc = new Document({
@@ -277,7 +357,7 @@ export async function exportWord(r: ReportInput) {
           ...(c.title_ar ? [p(c.title_ar, { rtl: true, size: 22 })] : []),
           new Paragraph({ spacing: { before: 200 }, children: [new TextRun({ text: "DEPARTMENT: ", bold: true, font, size: 24 }), new TextRun({ text: r.department?.name_en ?? "", font, size: 24 })] }),
           new Paragraph({ spacing: { after: 120 }, children: [new TextRun({ text: "MONTH: ", bold: true, font, size: 24 }), new TextRun({ text: `${m}/${y}`, font, size: 24 })] }),
-          new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }),
+          ...(isGrid(c) ? await gridTables() : [new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows })]),
           ...(c.range_note ? [new Paragraph({ spacing: { before: 120 }, alignment: AlignmentType.CENTER, children: [new TextRun({ text: c.range_note, size: 18, font, color: "444444" })] })] : []),
         ],
       },

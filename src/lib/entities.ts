@@ -12,25 +12,27 @@ const str = (v: unknown, max = 200) => (v === undefined || v === null ? "" : Str
 const num = (v: unknown) => (v === "" || v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v));
 
 function fields(v: unknown): Field[] | string {
-  if (!Array.isArray(v) || v.length === 0) return "Add at least one field";
+  if (!Array.isArray(v) || !v.some((f) => (f as In)?.type !== "heading")) return "Add at least one field";
   const seen = new Set<string>();
   const out: Field[] = [];
-  for (const raw of v.slice(0, 20) as In[]) {
-    const label_en = str(raw.label_en, 60);
+  for (const raw of v.slice(0, 120) as In[]) {
+    const label_en = str(raw.label_en, 100);
     if (!label_en) return "Every field needs an English label";
-    let key = slugify(str(raw.key, 40) || label_en).replace(/-/g, "_") || uid("f").slice(0, 8);
+    let key = slugify(str(raw.key, 40) || label_en.slice(0, 40)).replace(/-/g, "_") || uid("f").slice(0, 8);
     while (seen.has(key)) key += "_2";
     seen.add(key);
-    const type = (["number", "text", "select", "yesno"].includes(raw.type as string) ? raw.type : "text") as Field["type"];
+    const type = (["number", "text", "select", "yesno", "check", "heading"].includes(raw.type as string) ? raw.type : "text") as Field["type"];
     out.push({
       key,
       label_en,
-      label_ar: str(raw.label_ar, 60),
+      label_ar: str(raw.label_ar, 100),
       type,
       unit: type === "number" ? str(raw.unit, 10) : undefined,
       min: type === "number" ? num(raw.min) : undefined,
       max: type === "number" ? num(raw.max) : undefined,
-      required: Boolean(raw.required),
+      required: type === "heading" ? false : Boolean(raw.required),
+      qty: str(raw.qty, 20) || undefined,
+      photo: (type === "check" || type === "yesno") && raw.photo ? true : undefined,
       options:
         type === "select"
           ? (Array.isArray(raw.options) ? raw.options : str(raw.options, 500).split(","))
@@ -83,6 +85,7 @@ export function sanitize(entity: EntityName, b: In, existing: Department | Check
         range_note: str(b.range_note ?? e?.range_note, 240),
         footer_note: str(b.footer_note ?? e?.footer_note, 120),
         orientation: (b.orientation ?? e?.orientation) === "landscape" ? "landscape" : "portrait",
+        layout: ((l) => (l === "grid" || l === "table" ? l : null))(b.layout === undefined ? e?.layout : b.layout),
         sort: num(b.sort ?? e?.sort) ?? 0,
         active: b.active === undefined ? (e?.active ?? true) : Boolean(b.active),
         created_at: e?.created_at ?? now,
