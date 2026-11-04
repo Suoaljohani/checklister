@@ -23,7 +23,9 @@ export function ChecklistForm() {
   const now = useNow(5_000);
   const [data, setData] = useState<Data | null>(null);
   const [missing, setMissing] = useState(false);
-  const [locked, setLocked] = useState<Pick<Checklist, "title_en" | "title_ar" | "icon" | "color"> | null>(null);
+  const [locked, setLocked] = useState<{ c: Pick<Checklist, "title_en" | "title_ar" | "icon" | "color">; accounts: boolean } | null>(null);
+  // Proof the employee entered their password for this visit. Kept in memory only: leaving the page locks it again.
+  const [unlock, setUnlock] = useState("");
   const [values, setValues] = useState<Record<string, FieldValue>>({});
   const [note, setNote] = useState("");
   const [photos, setPhotos] = useState<Record<string, string>>({});
@@ -33,21 +35,23 @@ export function ChecklistForm() {
   const [serverError, setServerError] = useState("");
   const [done, setDone] = useState<{ at: string; flagged: boolean } | null>(null);
 
-  const load = useCallback(() => {
-    fetch(`/api/public/checklists/${id}`, { cache: "no-store" })
+  const load = useCallback((token = "") => {
+    fetch(`/api/public/checklists/${id}`, { cache: "no-store", headers: token ? { "x-unlock": token } : undefined })
       .then(async (r) => {
         const j = await r.json().catch(() => ({}));
         if (r.status === 403 && j.locked) {
-          setLocked(j.checklist);
+          setUnlock("");
+          setLocked({ c: j.checklist, accounts: !!j.accounts });
           return;
         }
+        setUnlock(token);
         if (!r.ok) throw new Error();
         setLocked(null);
         setData(j);
       })
       .catch(() => setMissing(true));
   }, [id]);
-  useEffect(load, [load]);
+  useEffect(() => load(), [load]);
 
   useEffect(() => {
     if (ready && !staff) router.replace(`/d/${slug}`);
@@ -116,6 +120,7 @@ export function ChecklistForm() {
           signature,
           photos,
           note,
+          unlock,
         }),
       });
       const j = await r.json();
@@ -124,7 +129,7 @@ export function ChecklistForm() {
         router.replace(`/d/${slug}`);
         return;
       }
-      if (r.status === 403) {
+      if (r.status === 403 && j.locked) {
         setSigning(false);
         setData(null);
         load();
@@ -153,7 +158,21 @@ export function ChecklistForm() {
       </main>
     );
 
-  if (locked) return <LockScreen slug={slug} id={id} c={locked} onUnlocked={load} />;
+  if (locked)
+    return (
+      <LockScreen
+        slug={slug}
+        id={id}
+        c={locked.c}
+        accounts={locked.accounts}
+        staffName={staff?.name}
+        onUnlocked={(token) => load(token)}
+        onSignIn={() => {
+          setStaff(null);
+          router.replace(`/d/${slug}`);
+        }}
+      />
+    );
 
   const z = now ? zoned(now) : null;
   const c = data?.checklist;
@@ -737,33 +756,40 @@ function LockScreen({
   slug,
   id,
   c,
+  accounts,
+  staffName,
   onUnlocked,
+  onSignIn,
 }: {
   slug: string;
   id: string;
   c: Pick<Checklist, "title_en" | "title_ar" | "icon" | "color">;
-  onUnlocked: () => void;
+  accounts: boolean;
+  staffName?: string;
+  onUnlocked: (token: string) => void;
+  onSignIn: () => void;
 }) {
-  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!code.trim()) return;
+    if (!password) return;
     setBusy(true);
     setErr("");
     try {
       const r = await fetch(`/api/public/checklists/${id}/unlock`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ code: code.trim() }),
+        body: JSON.stringify({ password }),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || "Wrong code");
-      onUnlocked();
+      if (r.status === 401 && j.signin) return onSignIn();
+      if (!r.ok) throw new Error(j.error || "Wrong password");
+      onUnlocked(j.token);
     } catch (x) {
       setErr((x as Error).message);
-      setCode("");
+      setPassword("");
     } finally {
       setBusy(false);
     }
@@ -788,30 +814,54 @@ function LockScreen({
             {c.title_ar}
           </p>
         )}
-        <p className="mt-5 flex items-center justify-center gap-2 text-[14px] text-ink-2">
-          <Lock className="h-4 w-4" /> This checklist needs a code · هذه القائمة تحتاج رمز
-        </p>
-        <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
-          <input
-            className="field num text-center text-[22px] tracking-[0.3em]"
-            type="password"
-            inputMode="numeric"
-            autoComplete="off"
-            autoFocus
-            aria-label="Code"
-            placeholder="••••"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-          />
-          {err && (
-            <p className="text-[13px] text-danger" role="alert">
-              {err}
+        {accounts ? (
+          <>
+            <p className="mt-5 flex items-center justify-center gap-2 text-[14px] text-ink-2">
+              <Lock className="h-4 w-4 shrink-0" /> Locked · enter your password
             </p>
-          )}
-          <button className="btn btn-primary h-[52px]" disabled={busy || !code.trim()}>
-            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />} Open checklist
-          </button>
-        </form>
+            <p className="mt-1 text-[13px] text-ink-3" dir="rtl">
+              قائمة مقفلة · أدخل كلمة مرورك
+            </p>
+            {staffName && (
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-[14px]">
+                <UserRound className="h-4 w-4 text-ink-3" /> <span className="font-semibold">{staffName}</span>
+              </p>
+            )}
+            <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
+              <input
+                className="field text-center text-[18px]"
+                type="password"
+                autoComplete="current-password"
+                autoFocus
+                aria-label="Your password"
+                placeholder="Password · كلمة المرور"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              {err && (
+                <p className="text-[13px] text-danger" role="alert">
+                  {err}
+                </p>
+              )}
+              <button className="btn btn-primary h-[52px]" disabled={busy || !password}>
+                {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />} Open checklist
+              </button>
+              <button type="button" className="text-[13px] text-ink-3 underline-offset-2 hover:underline" onClick={onSignIn}>
+                Not {staffName ?? "you"}? Sign in with your account
+              </button>
+            </form>
+          </>
+        ) : (
+          <div className="mt-5 rounded-xl bg-warn/12 p-4 text-[14px] text-warn">
+            <p className="flex items-center justify-center gap-2 font-semibold">
+              <Lock className="h-4 w-4" /> This checklist needs a staff account
+            </p>
+            <p className="mt-1">Ask the admin to create your account, then sign in.</p>
+            <p className="mt-2" dir="rtl">
+              هذه القائمة تحتاج حساب موظف. اطلب من الأدمن إنشاء حسابك ثم سجّل الدخول.
+            </p>
+          </div>
+        )}
       </Rise>
     </main>
   );

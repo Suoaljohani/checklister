@@ -62,22 +62,22 @@ export default function ChecklistsPage() {
   }
 
   async function toggleLock(c: Checklist) {
-    let body: { locked: boolean; lock_code?: string };
-    if (c.locked) {
-      if (!confirm(`Remove the code from “${c.title_en}”? Staff will open it without a code.`)) return;
-      body = { locked: false };
-    } else {
-      const code = prompt(`Set a code for “${c.title_en}”.\nStaff must enter it before opening this checklist (at least 4 characters).`);
-      if (code === null) return;
-      if (code.trim().length < 4) return toast("The code needs at least 4 characters", "error");
-      body = { locked: true, lock_code: code.trim() };
-    }
+    const locked = !c.locked;
+    if (
+      !confirm(
+        locked
+          ? `Lock “${c.title_en}”?\nStaff will have to enter their own account password every time they open it.`
+          : `Unlock “${c.title_en}”?\nStaff will open it without entering their password.`,
+      )
+    )
+      return;
+    setData((d) => d?.map((x) => (x.id === c.id ? { ...x, locked } : x)) ?? null);
     try {
-      await api(`/api/admin/checklists/${c.id}`, "PATCH", body);
-      setData((d) => d?.map((x) => (x.id === c.id ? { ...x, locked: body.locked } : x)) ?? null);
-      toast(body.locked ? "Locked with a code" : "Lock removed");
+      await api(`/api/admin/checklists/${c.id}`, "PATCH", { locked });
+      toast(locked ? "Locked · staff password needed" : "Unlocked");
     } catch (e) {
       toast((e as Error).message, "error");
+      reload();
     }
   }
 
@@ -152,8 +152,8 @@ export default function ChecklistsPage() {
                 <button
                   className={cx("btn btn-sm btn-icon", c.locked ? "border border-warn/40 bg-warn/15 text-warn" : "btn-ghost")}
                   onClick={() => toggleLock(c)}
-                  aria-label={c.locked ? "Remove lock" : "Lock with a code"}
-                  title={c.locked ? "Locked – click to remove the code" : "Lock with a code"}
+                  aria-label={c.locked ? "Unlock" : "Lock"}
+                  title={c.locked ? "Locked – staff enter their password. Click to unlock" : "Lock – staff must enter their password to open it"}
                 >
                   {c.locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
                 </button>
@@ -319,20 +319,15 @@ function Editor({ draft, deps, onClose, onSaved }: { draft: Draft | null; deps: 
           </div>
         </div>
 
-        {d.id && (
-          <div className="sm:col-span-2">
-            <label className="label">Lock code {d.locked && <span className="font-normal text-warn">· locked</span>}</label>
-            <input
-              className="field sm"
-              type="password"
-              autoComplete="new-password"
-              placeholder={d.locked ? "Type a new code to change it (leave empty to keep)" : "Not locked. Use the lock button in the list to lock it."}
-              disabled={!d.locked}
-              value={(d as Draft & { lock_code?: string }).lock_code ?? ""}
-              onChange={(e) => setD({ ...d, lock_code: e.target.value } as Draft)}
-            />
-          </div>
-        )}
+        <label className="flex items-start gap-2.5 rounded-xl bg-white/[0.05] p-3 text-[14px] text-ink-2 sm:col-span-2">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#e9a23b]" checked={!!d.locked} onChange={(e) => setD({ ...d, locked: e.target.checked })} />
+          <span>
+            <span className="flex items-center gap-1.5 font-semibold text-ink">
+              <Lock className="h-3.5 w-3.5" /> Locked
+            </span>
+            Staff must enter their own account password every time they open this checklist. Needs staff accounts (Staff page).
+          </span>
+        </label>
 
         <div className="sm:col-span-2">
           <label className="label">Report style</label>

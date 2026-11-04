@@ -121,25 +121,30 @@ export async function accountsRequired() {
   }
 }
 
-/* ---------------- Checklist lock codes ---------------- */
+/* ---------------- Locked checklists ----------------
+ * A locked checklist asks the signed-in employee for their own account password every time it is opened.
+ * The server then hands back a short-lived token that lives only in the page's memory (not a cookie),
+ * so leaving the page means entering the password again. The token names the employee who unlocked it.
+ */
 
-const UNLOCK_AGE = 60 * 60 * 12;
-const unlockName = (id: string) => `chk_u_${id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
-// Tied to the current code: changing the code locks everyone out again.
-const unlockSig = (id: string, hash: string, exp: string) => sign(`unlock:${id}:${hash.slice(0, 16)}:${exp}`);
+const UNLOCK_AGE = 60 * 30; // long enough to fill in a long list
+const unlockSig = (checklistId: string, employeeId: string, exp: string) => sign(`unlock:${checklistId}:${employeeId}:${exp}`);
 
-export async function grantUnlock(id: string, hash: string) {
-  const exp = String(Math.floor(Date.now() / 1000) + UNLOCK_AGE);
-  (await cookies()).set(unlockName(id), `${exp}.${unlockSig(id, hash, exp)}`, cookieOpts(UNLOCK_AGE));
+export function isLocked(c: { lock_hash?: string }) {
+  return !!c.lock_hash;
 }
 
-export async function isUnlocked(c: { id: string; lock_hash?: string }) {
-  if (!c.lock_hash) return true;
-  const v = (await cookies()).get(unlockName(c.id))?.value;
-  if (!v) return false;
-  const [exp, sig] = v.split(".");
-  if (!exp || !sig || Number(exp) * 1000 < Date.now()) return false;
-  return safeEqual(sig, unlockSig(c.id, c.lock_hash, exp));
+export function issueUnlockToken(checklistId: string, employeeId: string) {
+  const exp = String(Math.floor(Date.now() / 1000) + UNLOCK_AGE);
+  return `${employeeId}~${exp}~${unlockSig(checklistId, employeeId, exp)}`;
+}
+
+/** The employee id inside a valid token for this checklist, or null. */
+export function readUnlockToken(checklistId: string, token: string | null | undefined) {
+  if (!token) return null;
+  const [employeeId, exp, sig] = token.split("~");
+  if (!employeeId || !exp || !sig || Number(exp) * 1000 < Date.now()) return null;
+  return safeEqual(sig, unlockSig(checklistId, employeeId, exp)) ? employeeId : null;
 }
 
 /* Simple per-IP throttle for code and password guesses. */
