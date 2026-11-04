@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, useAnimationControls } from "motion/react";
 import { ArrowLeft, Check, LoaderCircle, Lock, LogOut, Pencil, Signature, UserRound } from "lucide-react";
@@ -18,6 +18,11 @@ type Data = { department: Department; checklists: Checklist[]; doneToday: Record
 export function DepartmentView() {
   const { slug } = useParams<{ slug: string }>();
   const router = useRouter();
+  // Set when staff arrive from a QR code but still need to sign in.
+  const next = useSearchParams().get("next");
+  const goNext = () => {
+    if (next && /^[\w-]+$/.test(next)) router.push(`/d/${slug}/${next}`);
+  };
   const [data, setData] = useState<Data | null>(null);
   const [missing, setMissing] = useState(false);
   const { staff, setStaff, ready, mode, signIn, signOut } = useStaff();
@@ -59,6 +64,7 @@ export function DepartmentView() {
         await signIn(no.trim(), password);
         clearSavedSignature();
         setPassword("");
+        goNext();
       } catch (x) {
         setErr((x as Error).message);
         nudge();
@@ -74,6 +80,7 @@ export function DepartmentView() {
     if (staff && staff.name.trim().toLowerCase() !== name.trim().toLowerCase()) clearSavedSignature();
     setStaff({ name: name.trim(), no: no.trim() });
     setEditing(false);
+    goNext();
   }
 
   function nudge() {

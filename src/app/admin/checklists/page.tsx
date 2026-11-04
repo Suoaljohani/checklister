@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion, Reorder } from "motion/react";
-import { ArrowDown, ArrowUp, Eye, EyeOff, Lock, LockOpen, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Eye, EyeOff, Lock, LockOpen, Pencil, Plus, QrCode, Trash2, X } from "lucide-react";
 import { Icon, ICONS } from "@/components/icon";
 import { Modal } from "@/components/modal";
 import { EASE } from "@/components/motion";
@@ -10,6 +10,7 @@ import type { Checklist, Department, Field } from "@/lib/types";
 import { TEMPLATES, type Template } from "@/lib/templates";
 import { cx, rangeLabel } from "@/lib/utils";
 import { useToast } from "../admin-shell";
+import { QrDialog } from "./qr-card";
 import { api, PageTitle, useData } from "../use-data";
 
 const COLORS = ["#1691D0", "#2BAAE2", "#3AC0C3", "#04A67A", "#9ECC3B", "#283A83", "#7A5AF8", "#E9A23B", "#E0475B", "#51938B"];
@@ -33,6 +34,7 @@ export default function ChecklistsPage() {
   const { data, reload, setData } = useData<Checklist[]>("/api/admin/checklists");
   const { data: deps } = useData<Department[]>("/api/admin/departments");
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [qr, setQr] = useState<Checklist | null>(null);
 
   function create() {
     setDraft({
@@ -149,6 +151,9 @@ export default function ChecklistsPage() {
                 <button className="btn btn-ghost btn-sm btn-icon" onClick={() => move(i, 1)} disabled={i === data.length - 1} aria-label="Move down">
                   <ArrowDown className="h-4 w-4" />
                 </button>
+                <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setQr(c)} aria-label="QR code" title="QR code to print">
+                  <QrCode className="h-4 w-4" />
+                </button>
                 <button
                   className={cx("btn btn-sm btn-icon", c.locked ? "border border-warn/40 bg-warn/15 text-warn" : "btn-ghost")}
                   onClick={() => toggleLock(c)}
@@ -177,6 +182,8 @@ export default function ChecklistsPage() {
         {data?.length === 0 && <p className="glass p-10 text-center text-ink-3">No checklists yet.</p>}
         {!data && <div className="glass h-24 animate-pulse" />}
       </div>
+
+      <QrDialog checklist={qr} department={deps?.find((d) => d.id === qr?.department_id)} onClose={() => setQr(null)} />
 
       <Editor
         draft={draft}
