@@ -54,8 +54,8 @@ export function ChecklistForm() {
   useEffect(() => load(), [load]);
 
   useEffect(() => {
-    if (ready && !staff) router.replace(`/d/${slug}`);
-  }, [ready, staff, router, slug]);
+    if (ready && !staff) router.replace(`/d/${slug}?next=${encodeURIComponent(id)}`);
+  }, [ready, staff, router, slug, id]);
 
   const set = (k: string, v: FieldValue) => {
     setValues((s) => ({ ...s, [k]: v }));
@@ -126,7 +126,7 @@ export function ChecklistForm() {
       const j = await r.json();
       if (r.status === 401 && j.signin) {
         setStaff(null);
-        router.replace(`/d/${slug}`);
+        router.replace(`/d/${slug}?next=${encodeURIComponent(id)}`);
         return;
       }
       if (r.status === 403 && j.locked) {
@@ -169,7 +169,7 @@ export function ChecklistForm() {
         onUnlocked={(token) => load(token)}
         onSignIn={() => {
           setStaff(null);
-          router.replace(`/d/${slug}`);
+          router.replace(`/d/${slug}?next=${encodeURIComponent(id)}`);
         }}
       />
     );
