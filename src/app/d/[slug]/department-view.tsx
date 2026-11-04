@@ -265,8 +265,8 @@ export function DepartmentView() {
                       <Icon name={c.icon} className="h-7 w-7" />
                     </span>
                     {c.locked && !done && (
-                      <span className="flex items-center gap-1 rounded-full bg-white/[0.08] px-2 py-1 text-[11px] font-semibold text-ink-2" title="Needs a code">
-                        <Lock className="h-3 w-3" strokeWidth={2.6} /> Code
+                      <span className="flex items-center gap-1 rounded-full bg-white/[0.08] px-2 py-1 text-[11px] font-semibold text-ink-2" title="Needs your password">
+                        <Lock className="h-3 w-3" strokeWidth={2.6} /> Locked
                       </span>
                     )}
                     {done && (

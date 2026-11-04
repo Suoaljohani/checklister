@@ -74,14 +74,9 @@ export function sanitize(entity: EntityName, b: In, existing: Department | Check
     if (!department_id) return { error: "Choose a department" };
     const f = fields(b.fields ?? e?.fields);
     if (typeof f === "string") return { error: f };
-    // Lock: a new code locks (or changes the code); locked=false unlocks; otherwise keep.
-    const code = str(b.lock_code, 40);
-    let lock_hash = e?.lock_hash ?? "";
-    if (code) {
-      if (code.length < 4) return { error: "The lock code needs at least 4 characters" };
-      lock_hash = hashPassword(code);
-    } else if (b.locked === false) lock_hash = "";
-    else if (b.locked === true && !lock_hash) return { error: "Enter a lock code" };
+    // Locked = staff must enter their own account password each time they open it.
+    // Stored in the lock_hash column as a non-empty marker (no shared code any more).
+    const lock_hash = b.locked === undefined ? (e?.lock_hash ? "staff" : "") : b.locked ? "staff" : "";
     return {
       row: {
         id: e?.id ?? uid("chk"),
