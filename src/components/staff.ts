@@ -3,27 +3,61 @@
 import { useEffect, useState } from "react";
 
 export type Staff = { name: string; no: string };
+export type StaffMode = "open" | "accounts";
 const KEY = "chk_staff";
 
+function persist(s: Staff | null) {
+  try {
+    if (s) localStorage.setItem(KEY, JSON.stringify(s));
+    else localStorage.removeItem(KEY);
+  } catch {}
+}
+
+/**
+ * Who is filling in checklists on this device.
+ * open: no staff accounts exist, staff type their name.
+ * accounts: staff sign in with employee number + password; the server session is the source of truth.
+ */
 export function useStaff() {
   const [staff, setStaffState] = useState<Staff | null>(null);
+  const [mode, setMode] = useState<StaffMode>("open");
   const [ready, setReady] = useState(false);
   useEffect(() => {
+    let local: Staff | null = null;
     try {
       const raw = localStorage.getItem(KEY);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- runs once after mount (browser-only value / data fetch)
-      if (raw) setStaffState(JSON.parse(raw));
+      if (raw) local = JSON.parse(raw);
     } catch {}
-    setReady(true);
+    fetch("/api/staff/me", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { mode: StaffMode; staff: Staff | null }) => {
+        setMode(j.mode);
+        const s = j.mode === "accounts" ? j.staff : local;
+        setStaffState(s);
+        persist(s);
+      })
+      .catch(() => setStaffState(local))
+      .finally(() => setReady(true));
   }, []);
   const setStaff = (s: Staff | null) => {
     setStaffState(s);
-    try {
-      if (s) localStorage.setItem(KEY, JSON.stringify(s));
-      else localStorage.removeItem(KEY);
-    } catch {}
+    persist(s);
   };
-  return { staff, setStaff, ready };
+  async function signIn(employee_no: string, password: string) {
+    const r = await fetch("/api/staff/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ employee_no, password }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "Could not sign in");
+    setStaff({ name: j.name, no: j.no });
+  }
+  async function signOut() {
+    if (mode === "accounts") await fetch("/api/staff/logout", { method: "POST" }).catch(() => {});
+    setStaff(null);
+  }
+  return { staff, setStaff, ready, mode, signIn, signOut };
 }
 
 export function greeting(d: Date) {

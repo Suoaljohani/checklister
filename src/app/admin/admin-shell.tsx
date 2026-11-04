@@ -16,17 +16,19 @@ import {
   LogOut,
   Settings,
   TriangleAlert,
+  Users,
 } from "lucide-react";
 import { Wordmark } from "@/components/brand";
 import { EASE } from "@/components/motion";
 import { cx } from "@/lib/utils";
 
 const NAV = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin", label: "Dashboard", short: "Home", icon: LayoutDashboard },
   { href: "/admin/records", label: "Records", icon: ClipboardList },
   { href: "/admin/reports", label: "Export", icon: FileDown },
-  { href: "/admin/checklists", label: "Checklists", icon: ListChecks },
-  { href: "/admin/departments", label: "Departments", icon: Building2 },
+  { href: "/admin/checklists", label: "Checklists", short: "Lists", icon: ListChecks },
+  { href: "/admin/departments", label: "Departments", short: "Depts", icon: Building2 },
+  { href: "/admin/staff", label: "Staff", icon: Users },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
@@ -139,13 +141,13 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={n.href}
                 href={n.href}
-                className={cx("relative flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[10px] font-medium", active ? "text-sky" : "text-ink-3")}
+                className={cx("relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[10px] font-medium", active ? "text-sky" : "text-ink-3")}
               >
                 {active && (
                   <motion.span layoutId="tab-pill" className="absolute inset-0 rounded-xl bg-[rgba(47,211,224,.16)] ring-1 ring-[rgba(124,233,240,.45)] shadow-[0_0_22px_-6px_rgba(47,211,224,.75)]" transition={{ type: "spring", stiffness: 420, damping: 36 }} />
                 )}
                 <n.icon className="relative h-5 w-5" strokeWidth={1.7} />
-                <span className="relative">{n.label}</span>
+                <span className="relative">{"short" in n ? n.short : n.label}</span>
               </Link>
             );
           })}

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, useAnimationControls } from "motion/react";
-import { ArrowLeft, Check, Pencil, Signature, UserRound } from "lucide-react";
+import { ArrowLeft, Check, LoaderCircle, Lock, LogOut, Pencil, Signature, UserRound } from "lucide-react";
 import { Wordmark } from "@/components/brand";
 import { LiveClock, useNow } from "@/components/clock";
 import { Icon } from "@/components/icon";
@@ -20,7 +20,10 @@ export function DepartmentView() {
   const router = useRouter();
   const [data, setData] = useState<Data | null>(null);
   const [missing, setMissing] = useState(false);
-  const { staff, setStaff, ready } = useStaff();
+  const { staff, setStaff, ready, mode, signIn, signOut } = useStaff();
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [no, setNo] = useState("");
@@ -46,8 +49,24 @@ export function DepartmentView() {
 
   const showForm = ready && (!staff || editing);
 
-  function save(e?: React.FormEvent) {
+  async function save(e?: React.FormEvent) {
     e?.preventDefault();
+    if (mode === "accounts") {
+      if (!no.trim() || !password) return nudge();
+      setBusy(true);
+      setErr("");
+      try {
+        await signIn(no.trim(), password);
+        clearSavedSignature();
+        setPassword("");
+      } catch (x) {
+        setErr((x as Error).message);
+        nudge();
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     if (!name.trim()) {
       nudge();
       return;
@@ -101,6 +120,47 @@ export function DepartmentView() {
 
         <Rise i={1} className="mt-6">
           {showForm ? (
+            mode === "accounts" ? (
+            <motion.form animate={shake} onSubmit={save} className="glass flex flex-col gap-3 p-4 sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="flex-1">
+                  <label htmlFor="no" className="label">
+                    Employee no. · الرقم الوظيفي
+                  </label>
+                  <input
+                    id="no"
+                    ref={nameRef}
+                    className="field num"
+                    inputMode="numeric"
+                    autoComplete="username"
+                    value={no}
+                    onChange={(e) => setNo(e.target.value)}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label htmlFor="pw" className="label">
+                    Password · كلمة المرور
+                  </label>
+                  <input
+                    id="pw"
+                    type="password"
+                    className="field"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+                <button className="btn btn-primary h-[52px]" disabled={busy}>
+                  {busy && <LoaderCircle className="h-4 w-4 animate-spin" />} Sign in
+                </button>
+              </div>
+              {err && (
+                <p className="text-[13px] text-danger" role="alert">
+                  {err}
+                </p>
+              )}
+            </motion.form>
+            ) : (
             <motion.form animate={shake} onSubmit={save} className="glass flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:p-5">
               <div className="flex-1">
                 <label htmlFor="name" className="label">
@@ -124,6 +184,7 @@ export function DepartmentView() {
               </div>
               <button className="btn btn-primary h-[52px]">Continue</button>
             </motion.form>
+            )
           ) : staff ? (
             <div className="glass flex items-center gap-4 p-4">
               <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-teal to-blue text-white">
@@ -145,16 +206,30 @@ export function DepartmentView() {
                   </button>
                 )}
               </div>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => {
-                  setName(staff.name);
-                  setNo(staff.no);
-                  setEditing(true);
-                }}
-              >
-                <Pencil className="h-3.5 w-3.5" /> Not you?
-              </button>
+              {mode === "accounts" ? (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={async () => {
+                    clearSavedSignature();
+                    setHasSig(false);
+                    setNo("");
+                    await signOut();
+                  }}
+                >
+                  <LogOut className="h-3.5 w-3.5" /> Sign out
+                </button>
+              ) : (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    setName(staff.name);
+                    setNo(staff.no);
+                    setEditing(true);
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Not you?
+                </button>
+              )}
             </div>
           ) : (
             <div className="glass h-[84px] animate-pulse opacity-60" />
@@ -189,6 +264,11 @@ export function DepartmentView() {
                     >
                       <Icon name={c.icon} className="h-7 w-7" />
                     </span>
+                    {c.locked && !done && (
+                      <span className="flex items-center gap-1 rounded-full bg-white/[0.08] px-2 py-1 text-[11px] font-semibold text-ink-2" title="Needs a code">
+                        <Lock className="h-3 w-3" strokeWidth={2.6} /> Code
+                      </span>
+                    )}
                     {done && (
                       <motion.span
                         initial={{ scale: 0.6, opacity: 0 }}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion, Reorder } from "motion/react";
-import { ArrowDown, ArrowUp, Eye, EyeOff, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Eye, EyeOff, Lock, LockOpen, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Icon, ICONS } from "@/components/icon";
 import { Modal } from "@/components/modal";
 import { EASE } from "@/components/motion";
@@ -61,6 +61,26 @@ export default function ChecklistsPage() {
     }
   }
 
+  async function toggleLock(c: Checklist) {
+    let body: { locked: boolean; lock_code?: string };
+    if (c.locked) {
+      if (!confirm(`Remove the code from “${c.title_en}”? Staff will open it without a code.`)) return;
+      body = { locked: false };
+    } else {
+      const code = prompt(`Set a code for “${c.title_en}”.\nStaff must enter it before opening this checklist (at least 4 characters).`);
+      if (code === null) return;
+      if (code.trim().length < 4) return toast("The code needs at least 4 characters", "error");
+      body = { locked: true, lock_code: code.trim() };
+    }
+    try {
+      await api(`/api/admin/checklists/${c.id}`, "PATCH", body);
+      setData((d) => d?.map((x) => (x.id === c.id ? { ...x, locked: body.locked } : x)) ?? null);
+      toast(body.locked ? "Locked with a code" : "Lock removed");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+
   async function move(i: number, dir: -1 | 1) {
     if (!data) return;
     const j = i + dir;
@@ -107,7 +127,14 @@ export default function ChecklistsPage() {
                 <Icon name={c.icon} className="h-6 w-6" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="font-semibold leading-snug">{c.title_en}</p>
+                <p className="font-semibold leading-snug">
+                  {c.title_en}
+                  {c.locked && (
+                    <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-warn/15 px-2 py-0.5 align-middle text-[11px] font-semibold text-warn">
+                      <Lock className="h-3 w-3" /> Locked
+                    </span>
+                  )}
+                </p>
                 <p className="mt-0.5 text-[13px] text-ink-3">
                   {deps?.find((d) => d.id === c.department_id)?.name_en ?? "—"} ·{" "}
                   {c.fields.filter((f) => f.type !== "heading").length > 6
@@ -121,6 +148,14 @@ export default function ChecklistsPage() {
                 </button>
                 <button className="btn btn-ghost btn-sm btn-icon" onClick={() => move(i, 1)} disabled={i === data.length - 1} aria-label="Move down">
                   <ArrowDown className="h-4 w-4" />
+                </button>
+                <button
+                  className={cx("btn btn-sm btn-icon", c.locked ? "border border-warn/40 bg-warn/15 text-warn" : "btn-ghost")}
+                  onClick={() => toggleLock(c)}
+                  aria-label={c.locked ? "Remove lock" : "Lock with a code"}
+                  title={c.locked ? "Locked – click to remove the code" : "Lock with a code"}
+                >
+                  {c.locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
                 </button>
                 <button className="btn btn-ghost btn-sm btn-icon" onClick={() => toggle(c)} aria-label={c.active ? "Hide" : "Show"} title={c.active ? "Visible – click to hide" : "Hidden – click to show"}>
                   {c.active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
@@ -283,6 +318,21 @@ function Editor({ draft, deps, onClose, onSaved }: { draft: Draft | null; deps: 
             ))}
           </div>
         </div>
+
+        {d.id && (
+          <div className="sm:col-span-2">
+            <label className="label">Lock code {d.locked && <span className="font-normal text-warn">· locked</span>}</label>
+            <input
+              className="field sm"
+              type="password"
+              autoComplete="new-password"
+              placeholder={d.locked ? "Type a new code to change it (leave empty to keep)" : "Not locked. Use the lock button in the list to lock it."}
+              disabled={!d.locked}
+              value={(d as Draft & { lock_code?: string }).lock_code ?? ""}
+              onChange={(e) => setD({ ...d, lock_code: e.target.value } as Draft)}
+            />
+          </div>
+        )}
 
         <div className="sm:col-span-2">
           <label className="label">Report style</label>

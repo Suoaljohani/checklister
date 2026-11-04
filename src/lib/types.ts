@@ -41,6 +41,10 @@ export type Checklist = {
   orientation: "portrait" | "landscape";
   /** Report style. table = one row per entry; grid = items down the side, entries across (like the paper forms). */
   layout?: "table" | "grid" | null;
+  /** Hash of the code staff must enter to open this checklist. Empty = not locked. Never sent to the browser. */
+  lock_hash?: string;
+  /** Sent to the browser instead of lock_hash. */
+  locked?: boolean;
   sort: number;
   active: boolean;
   created_at: string;
@@ -71,7 +75,20 @@ export type Settings = {
   admin_password_hash?: string;
 };
 
-export type EntityName = "departments" | "checklists" | "submissions";
+export type Employee = {
+  id: string;
+  name: string;
+  name_ar: string;
+  employee_no: string;
+  job_title: string;
+  /** Never sent to the browser. */
+  password_hash?: string;
+  active: boolean;
+  sort: number;
+  created_at: string;
+};
+
+export type EntityName = "departments" | "checklists" | "submissions" | "employees";
 
 export type Stats = {
   generated_at: string;

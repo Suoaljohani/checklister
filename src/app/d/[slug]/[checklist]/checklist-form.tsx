@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, Camera, CalendarDays, Check, CheckCheck, CircleAlert, CircleCheck, Clock3, Lock, RotateCcw, Sun, UserRound, X } from "lucide-react";
+import { ArrowLeft, Camera, KeyRound, LoaderCircle, CalendarDays, Check, CheckCheck, CircleAlert, CircleCheck, Clock3, Lock, RotateCcw, Sun, UserRound, X } from "lucide-react";
 import { HospitalBadge } from "@/components/brand";
 import { useNow } from "@/components/clock";
 import { Icon } from "@/components/icon";
@@ -19,10 +19,11 @@ type Data = { checklist: Checklist; department: Department };
 export function ChecklistForm() {
   const { slug, checklist: id } = useParams<{ slug: string; checklist: string }>();
   const router = useRouter();
-  const { staff, ready } = useStaff();
+  const { staff, ready, setStaff } = useStaff();
   const now = useNow(5_000);
   const [data, setData] = useState<Data | null>(null);
   const [missing, setMissing] = useState(false);
+  const [locked, setLocked] = useState<Pick<Checklist, "title_en" | "title_ar" | "icon" | "color"> | null>(null);
   const [values, setValues] = useState<Record<string, FieldValue>>({});
   const [note, setNote] = useState("");
   const [photos, setPhotos] = useState<Record<string, string>>({});
@@ -32,12 +33,21 @@ export function ChecklistForm() {
   const [serverError, setServerError] = useState("");
   const [done, setDone] = useState<{ at: string; flagged: boolean } | null>(null);
 
-  useEffect(() => {
-    fetch(`/api/public/checklists/${id}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then(setData)
+  const load = useCallback(() => {
+    fetch(`/api/public/checklists/${id}`, { cache: "no-store" })
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({}));
+        if (r.status === 403 && j.locked) {
+          setLocked(j.checklist);
+          return;
+        }
+        if (!r.ok) throw new Error();
+        setLocked(null);
+        setData(j);
+      })
       .catch(() => setMissing(true));
   }, [id]);
+  useEffect(load, [load]);
 
   useEffect(() => {
     if (ready && !staff) router.replace(`/d/${slug}`);
@@ -109,6 +119,17 @@ export function ChecklistForm() {
         }),
       });
       const j = await r.json();
+      if (r.status === 401 && j.signin) {
+        setStaff(null);
+        router.replace(`/d/${slug}`);
+        return;
+      }
+      if (r.status === 403) {
+        setSigning(false);
+        setData(null);
+        load();
+        return;
+      }
       if (!r.ok) throw new Error(j.error || "Could not submit");
       setSigning(false);
       setDone({ at: j.submitted_at, flagged: j.flagged });
@@ -131,6 +152,8 @@ export function ChecklistForm() {
         </div>
       </main>
     );
+
+  if (locked) return <LockScreen slug={slug} id={id} c={locked} onUnlocked={load} />;
 
   const z = now ? zoned(now) : null;
   const c = data?.checklist;
@@ -707,5 +730,89 @@ function CheckSummary({ checklist, values }: { checklist: Checklist; values: Rec
         </span>
       ))}
     </>
+  );
+}
+
+function LockScreen({
+  slug,
+  id,
+  c,
+  onUnlocked,
+}: {
+  slug: string;
+  id: string;
+  c: Pick<Checklist, "title_en" | "title_ar" | "icon" | "color">;
+  onUnlocked: () => void;
+}) {
+  const [code, setCode] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!code.trim()) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const r = await fetch(`/api/public/checklists/${id}/unlock`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || "Wrong code");
+      onUnlocked();
+    } catch (x) {
+      setErr((x as Error).message);
+      setCode("");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <main className="mx-auto w-full max-w-md px-4 pt-[max(16px,env(safe-area-inset-top))]">
+      <header className="flex items-center gap-3 py-4">
+        <Link href={`/d/${slug}`} className="btn btn-ghost btn-sm btn-icon" aria-label="Back">
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
+      </header>
+      <Rise className="glass-strong mt-6 p-6 text-center">
+        <span
+          className="mx-auto grid h-16 w-16 place-items-center rounded-[20px] text-white"
+          style={{ background: `linear-gradient(145deg, ${c.color}, color-mix(in oklab, ${c.color} 55%, #283a83))` }}
+        >
+          <Icon name={c.icon} className="h-8 w-8" />
+        </span>
+        <h1 className="mt-4 text-balance text-[20px] font-semibold leading-tight">{c.title_en}</h1>
+        {c.title_ar && (
+          <p className="mt-1 text-[14px] text-ink-2" dir="rtl">
+            {c.title_ar}
+          </p>
+        )}
+        <p className="mt-5 flex items-center justify-center gap-2 text-[14px] text-ink-2">
+          <Lock className="h-4 w-4" /> This checklist needs a code · هذه القائمة تحتاج رمز
+        </p>
+        <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
+          <input
+            className="field num text-center text-[22px] tracking-[0.3em]"
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            autoFocus
+            aria-label="Code"
+            placeholder="••••"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+          />
+          {err && (
+            <p className="text-[13px] text-danger" role="alert">
+              {err}
+            </p>
+          )}
+          <button className="btn btn-primary h-[52px]" disabled={busy || !code.trim()}>
+            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />} Open checklist
+          </button>
+        </form>
+      </Rise>
+    </main>
   );
 }
