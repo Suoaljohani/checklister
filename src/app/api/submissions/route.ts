@@ -1,3 +1,4 @@
+import { accountsRequired, currentEmployee, isUnlocked } from "@/lib/auth";
 import { store } from "@/lib/store";
 import type { FieldValue, Submission } from "@/lib/types";
 import { isFlagged, uid } from "@/lib/utils";
@@ -24,7 +25,17 @@ export async function POST(req: Request) {
   const checklist = body.checklist_id ? await s.get("checklists", body.checklist_id) : null;
   if (!checklist || !checklist.active) return Response.json({ error: "Checklist not found" }, { status: 404 });
 
-  const name = (body.employee_name ?? "").trim().slice(0, 80);
+  if (!(await isUnlocked(checklist))) return Response.json({ error: "This checklist is locked. Enter the code again." }, { status: 403 });
+
+  // With staff accounts, the name comes from the signed-in account, not the form.
+  let name = (body.employee_name ?? "").trim().slice(0, 80);
+  let employeeNo = (body.employee_no ?? "").trim().slice(0, 30);
+  if (await accountsRequired()) {
+    const e = await currentEmployee();
+    if (!e) return Response.json({ error: "Please sign in again", signin: true }, { status: 401 });
+    name = e.name;
+    employeeNo = e.employee_no;
+  }
   if (!name) return Response.json({ error: "Please enter your name" }, { status: 400 });
   const sig = body.signature ?? "";
   if (!sig.startsWith("data:image/png;base64,") || sig.length > MAX_SIGNATURE)
@@ -59,7 +70,7 @@ export async function POST(req: Request) {
     checklist_id: checklist.id,
     department_id: checklist.department_id,
     employee_name: name,
-    employee_no: (body.employee_no ?? "").trim().slice(0, 30),
+    employee_no: employeeNo,
     submitted_at: new Date().toISOString(),
     values,
     signature: sig,

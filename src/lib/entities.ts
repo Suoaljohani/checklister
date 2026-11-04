@@ -1,12 +1,13 @@
-import type { Checklist, Department, EntityName, Field, FieldValue, Submission } from "./types";
+import { hashPassword } from "./auth";
+import type { Checklist, Department, Employee, EntityName, Field, FieldValue, Submission } from "./types";
 import { slugify, uid } from "./utils";
 
 export function isEntity(e: string): e is EntityName {
-  return e === "departments" || e === "checklists" || e === "submissions";
+  return e === "departments" || e === "checklists" || e === "submissions" || e === "employees";
 }
 
 type In = Record<string, unknown>;
-type Out = { row: Partial<Department | Checklist | Submission> } | { error: string };
+type Out = { row: Partial<Department | Checklist | Submission | Employee> } | { error: string };
 
 const str = (v: unknown, max = 200) => (v === undefined || v === null ? "" : String(v).trim().slice(0, max));
 const num = (v: unknown) => (v === "" || v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v));
@@ -44,7 +45,7 @@ function fields(v: unknown): Field[] | string {
   return out;
 }
 
-export function sanitize(entity: EntityName, b: In, existing: Department | Checklist | Submission | null): Out {
+export function sanitize(entity: EntityName, b: In, existing: Department | Checklist | Submission | Employee | null): Out {
   const now = new Date().toISOString();
   if (entity === "departments") {
     const e = existing as Department | null;
@@ -73,6 +74,14 @@ export function sanitize(entity: EntityName, b: In, existing: Department | Check
     if (!department_id) return { error: "Choose a department" };
     const f = fields(b.fields ?? e?.fields);
     if (typeof f === "string") return { error: f };
+    // Lock: a new code locks (or changes the code); locked=false unlocks; otherwise keep.
+    const code = str(b.lock_code, 40);
+    let lock_hash = e?.lock_hash ?? "";
+    if (code) {
+      if (code.length < 4) return { error: "The lock code needs at least 4 characters" };
+      lock_hash = hashPassword(code);
+    } else if (b.locked === false) lock_hash = "";
+    else if (b.locked === true && !lock_hash) return { error: "Enter a lock code" };
     return {
       row: {
         id: e?.id ?? uid("chk"),
@@ -85,6 +94,7 @@ export function sanitize(entity: EntityName, b: In, existing: Department | Check
         range_note: str(b.range_note ?? e?.range_note, 240),
         footer_note: str(b.footer_note ?? e?.footer_note, 120),
         orientation: (b.orientation ?? e?.orientation) === "landscape" ? "landscape" : "portrait",
+        lock_hash,
         layout: ((l) => (l === "grid" || l === "table" ? l : null))(b.layout === undefined ? e?.layout : b.layout),
         sort: num(b.sort ?? e?.sort) ?? 0,
         active: b.active === undefined ? (e?.active ?? true) : Boolean(b.active),
@@ -92,6 +102,30 @@ export function sanitize(entity: EntityName, b: In, existing: Department | Check
       },
     };
   }
+  if (entity === "employees") {
+    const e = existing as Employee | null;
+    const name = str(b.name ?? e?.name, 80);
+    if (!name) return { error: "Name is required" };
+    const employee_no = str(b.employee_no ?? e?.employee_no, 30).replace(/\s+/g, "");
+    if (!employee_no) return { error: "Employee number is required" };
+    const pw = b.password === undefined || b.password === null ? "" : String(b.password);
+    if (!e && pw.length < 4) return { error: "Password needs at least 4 characters" };
+    if (pw && pw.length < 4) return { error: "Password needs at least 4 characters" };
+    return {
+      row: {
+        id: e?.id ?? uid("emp"),
+        name,
+        name_ar: str(b.name_ar ?? e?.name_ar, 80),
+        employee_no,
+        job_title: str(b.job_title ?? e?.job_title, 60),
+        password_hash: pw ? hashPassword(pw.slice(0, 100)) : e?.password_hash,
+        active: b.active === undefined ? (e?.active ?? true) : Boolean(b.active),
+        sort: num(b.sort ?? e?.sort) ?? 0,
+        created_at: e?.created_at ?? now,
+      },
+    };
+  }
+
   // submissions: admin may correct values / name / note only
   const e = existing as Submission | null;
   if (!e) return { error: "Records are created by staff from the checklist page" };
@@ -110,4 +144,19 @@ export function sanitize(entity: EntityName, b: In, existing: Department | Check
       values,
     },
   };
+}
+
+/** Remove secrets before a row goes to the browser. */
+export function toClient<T>(row: T): T {
+  if (!row || typeof row !== "object") return row;
+  const r = { ...(row as Record<string, unknown>) };
+  if ("lock_hash" in r) {
+    r.locked = !!r.lock_hash;
+    delete r.lock_hash;
+  }
+  if ("password_hash" in r) {
+    r.has_password = !!r.password_hash;
+    delete r.password_hash;
+  }
+  return r as T;
 }

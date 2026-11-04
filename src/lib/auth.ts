@@ -69,3 +69,89 @@ export async function isAdmin() {
 export function unauthorized() {
   return Response.json({ error: "Unauthorized" }, { status: 401 });
 }
+
+export function verifyPassword(pw: string, stored: string | undefined) {
+  return !!stored && verifyHash(pw, stored);
+}
+
+/* ---------------- Staff sign-in (employee accounts) ---------------- */
+
+const STAFF_COOKIE = "chk_staff";
+const STAFF_AGE = 60 * 60 * 14; // one long shift
+
+const cookieOpts = (maxAge: number) => ({
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  path: "/",
+  maxAge,
+});
+
+export async function createStaffSession(employeeId: string) {
+  const exp = Math.floor(Date.now() / 1000) + STAFF_AGE;
+  const body = `${employeeId}.${exp}`;
+  (await cookies()).set(STAFF_COOKIE, `${body}.${sign(`staff:${body}`)}`, cookieOpts(STAFF_AGE));
+}
+
+export async function destroyStaffSession() {
+  (await cookies()).delete(STAFF_COOKIE);
+}
+
+/** The signed-in employee, if the cookie is valid and the account is still active. */
+export async function currentEmployee() {
+  const token = (await cookies()).get(STAFF_COOKIE)?.value;
+  if (!token) return null;
+  const i = token.lastIndexOf(".");
+  const body = token.slice(0, i);
+  const sig = token.slice(i + 1);
+  if (!body || !sig || !safeEqual(sig, sign(`staff:${body}`))) return null;
+  const j = body.lastIndexOf(".");
+  const id = body.slice(0, j);
+  if (Number(body.slice(j + 1)) * 1000 < Date.now()) return null;
+  const e = await store().get("employees", id);
+  return e && e.active ? e : null;
+}
+
+/** Accounts are required once at least one active employee exists. */
+export async function accountsRequired() {
+  try {
+    return (await store().list("employees")).some((e) => e.active);
+  } catch {
+    return false; // employees table not created yet (migration 0004 not run)
+  }
+}
+
+/* ---------------- Checklist lock codes ---------------- */
+
+const UNLOCK_AGE = 60 * 60 * 12;
+const unlockName = (id: string) => `chk_u_${id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+// Tied to the current code: changing the code locks everyone out again.
+const unlockSig = (id: string, hash: string, exp: string) => sign(`unlock:${id}:${hash.slice(0, 16)}:${exp}`);
+
+export async function grantUnlock(id: string, hash: string) {
+  const exp = String(Math.floor(Date.now() / 1000) + UNLOCK_AGE);
+  (await cookies()).set(unlockName(id), `${exp}.${unlockSig(id, hash, exp)}`, cookieOpts(UNLOCK_AGE));
+}
+
+export async function isUnlocked(c: { id: string; lock_hash?: string }) {
+  if (!c.lock_hash) return true;
+  const v = (await cookies()).get(unlockName(c.id))?.value;
+  if (!v) return false;
+  const [exp, sig] = v.split(".");
+  if (!exp || !sig || Number(exp) * 1000 < Date.now()) return false;
+  return safeEqual(sig, unlockSig(c.id, c.lock_hash, exp));
+}
+
+/* Simple per-IP throttle for code and password guesses. */
+const tries = new Map<string, { n: number; at: number }>();
+export function throttle(req: Request, scope: string) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+  const k = `${scope}:${ip}`;
+  const a = tries.get(k);
+  const fresh = a && Date.now() - a.at < 5 * 60e3;
+  return {
+    blocked: !!fresh && a!.n >= 8,
+    fail: () => tries.set(k, { n: (fresh ? a!.n : 0) + 1, at: Date.now() }),
+    ok: () => tries.delete(k),
+  };
+}

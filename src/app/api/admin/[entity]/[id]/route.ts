@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { isAdmin, unauthorized } from "@/lib/auth";
 import { store } from "@/lib/store";
-import { sanitize, isEntity } from "@/lib/entities";
+import { sanitize, isEntity, toClient } from "@/lib/entities";
 import { isFlagged } from "@/lib/utils";
 import type { Submission } from "@/lib/types";
 
@@ -18,13 +18,17 @@ export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/admin/[ent
     const clash = (await store().list("departments")).some((d) => d.id !== id && d.slug === patch.slug);
     if (clash) return Response.json({ error: "That link name is already used by another department" }, { status: 400 });
   }
+  if (entity === "employees") {
+    const clash = (await store().list("employees")).some((e) => e.id !== id && e.employee_no === patch.employee_no);
+    if (clash) return Response.json({ error: "Another employee already has that number" }, { status: 400 });
+  }
   if (entity === "submissions") {
     const sub = { ...(existing as Submission), ...patch } as Submission;
     const checklist = await store().get("checklists", sub.checklist_id);
     if (checklist) patch.flagged = isFlagged(checklist, sub.values);
   }
   delete patch.id;
-  return Response.json(await store().update(entity, id, patch as never));
+  return Response.json(toClient(await store().update(entity, id, patch as never)));
 }
 
 export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/admin/[entity]/[id]">) {
