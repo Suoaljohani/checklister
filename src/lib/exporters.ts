@@ -46,19 +46,37 @@ async function logoPng(size = 320) {
 }
 
 /* ---------------- PDF (renders the on-screen paper pages) ---------------- */
-export async function exportPdf(r: ReportInput, pages: HTMLElement[]) {
-  const [{ toPng }, { jsPDF }] = await Promise.all([import("html-to-image"), import("jspdf")]);
+/** Snapshot each rendered paper page as a PNG. */
+export async function pagesToPng(pages: HTMLElement[], pixelRatio = 2.5) {
+  const { toPng } = await import("html-to-image");
+  const out: string[] = [];
+  for (const p of pages) out.push(await toPng(p, { pixelRatio, backgroundColor: "#ffffff", cacheBust: false }));
+  return out;
+}
+
+/** A4 PDF from page snapshots. */
+export async function buildPdf(r: ReportInput, pngs: string[]) {
+  const { jsPDF } = await import("jspdf");
   const landscape = r.checklist.orientation === "landscape";
   const pdf = new jsPDF({ orientation: landscape ? "landscape" : "portrait", unit: "mm", format: "a4", compress: true });
   const W = landscape ? 297 : 210;
   const H = landscape ? 210 : 297;
-  for (let i = 0; i < pages.length; i++) {
-    const png = await toPng(pages[i], { pixelRatio: 2.5, backgroundColor: "#ffffff", cacheBust: false });
+  pngs.forEach((png, i) => {
     if (i > 0) pdf.addPage("a4", landscape ? "landscape" : "portrait");
     pdf.addImage(png, "PNG", 0, 0, W, H, undefined, "FAST");
-  }
+  });
   pdf.setProperties({ title: r.checklist.title_en, subject: `${r.department?.name_en ?? ""} ${r.month}` });
-  download(pdf.output("blob"), `${fileBase(r)}.pdf`);
+  return pdf.output("blob");
+}
+
+export function pdfName(r: ReportInput) {
+  return `${fileBase(r)}.pdf`;
+}
+
+export { download };
+
+export async function exportPdf(r: ReportInput, pages: HTMLElement[]) {
+  download(await buildPdf(r, await pagesToPng(pages)), pdfName(r));
 }
 
 /* ---------------- Excel ---------------- */

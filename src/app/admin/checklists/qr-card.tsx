@@ -11,8 +11,20 @@ export function checklistLink(c: Pick<Checklist, "id">) {
   return `${location.origin}/c/${encodeURIComponent(c.id)}`;
 }
 
-function fileName(c: Checklist) {
-  return `QR_${c.title_en.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 50)}.png`;
+export type QrKind = "open" | "report";
+
+const REPORT_COLOR = "#283A83";
+
+/** Link for the "latest report" QR: needs the checklist's secret, which only admins can fetch. */
+async function reportLink(c: Pick<Checklist, "id">) {
+  const r = await fetch(`/api/admin/report-link/${encodeURIComponent(c.id)}`, { cache: "no-store" });
+  if (!r.ok) throw new Error();
+  const { token } = (await r.json()) as { token: string };
+  return `${location.origin}/r/${encodeURIComponent(c.id)}?t=${token}`;
+}
+
+function fileName(c: Checklist, kind: QrKind) {
+  return `QR${kind === "report" ? "-Report" : ""}_${c.title_en.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 50)}.png`;
 }
 
 /* ---------------- Card drawing (A6 portrait at 300 dpi; prints well on A5/A6) ---------------- */
@@ -42,11 +54,11 @@ async function loadImage(src: string) {
   return img;
 }
 
-export async function drawQrCard(c: Checklist, department: Department | undefined): Promise<string> {
+export async function drawQrCard(c: Checklist, department: Department | undefined, kind: QrKind, url: string): Promise<string> {
   const QR = (await import("qrcode")).default;
   await document.fonts?.ready;
   const font = getComputedStyle(document.body).fontFamily || "sans-serif";
-  const url = checklistLink(c);
+  const accent = kind === "report" ? REPORT_COLOR : c.color;
 
   const canvas = document.createElement("canvas");
   canvas.width = W;
@@ -58,9 +70,20 @@ export async function drawQrCard(c: Checklist, department: Department | undefine
   ctx.textBaseline = "alphabetic";
 
   // Coloured band at the top and bottom
-  ctx.fillStyle = c.color;
+  ctx.fillStyle = accent;
   ctx.fillRect(0, 0, W, 22);
   ctx.fillRect(0, H - 22, W, 22);
+  if (kind === "report") {
+    // Corner tag so it can't be confused with the "open checklist" code
+    ctx.font = `700 34px ${font}`;
+    const tag = "REPORT · تقرير";
+    const tw = ctx.measureText(tag).width + 56;
+    ctx.beginPath();
+    ctx.roundRect(W - tw - 50, 50, tw, 64, 32);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(tag, W - tw / 2 - 50, 94);
+  }
 
   // Hospital logo + name
   let y = 70;
@@ -110,7 +133,7 @@ export async function drawQrCard(c: Checklist, department: Department | undefine
   const frame = 26;
   const qx = (W - size) / 2;
   const qy = y + 50;
-  ctx.fillStyle = c.color;
+  ctx.fillStyle = accent;
   ctx.beginPath();
   ctx.roundRect(qx - frame, qy - frame, size + frame * 2, size + frame * 2, 48);
   ctx.fill();
@@ -126,13 +149,13 @@ export async function drawQrCard(c: Checklist, department: Department | undefine
   ctx.fillStyle = "#0d2138";
   ctx.font = `700 46px ${font}`;
   y += 82;
-  ctx.fillText("Scan to open this checklist", W / 2, y);
+  ctx.fillText(kind === "report" ? "Scan to view the latest report (PDF)" : "Scan to open this checklist", W / 2, y);
   ctx.font = `500 42px ${font}`;
   ctx.direction = "rtl";
   y += 58;
-  ctx.fillText("امسح الرمز لفتح القائمة مباشرة", W / 2, y);
+  ctx.fillText(kind === "report" ? "امسح الرمز لعرض آخر تقرير محدّث" : "امسح الرمز لفتح القائمة مباشرة", W / 2, y);
   ctx.direction = "ltr";
-  if (c.locked) {
+  if (kind === "open" && c.locked) {
     ctx.fillStyle = "#b45309";
     ctx.font = `600 32px ${font}`;
     y += 50;
@@ -142,7 +165,8 @@ export async function drawQrCard(c: Checklist, department: Department | undefine
   // Link, small, for typing by hand
   ctx.fillStyle = "#94a3b8";
   ctx.font = `400 26px ${font}`;
-  ctx.fillText(url.replace(/^https?:\/\//, ""), W / 2, H - 52);
+  // (The report link holds a secret, so it is not printed as text.)
+  if (kind === "open") ctx.fillText(url.replace(/^https?:\/\//, ""), W / 2, H - 52);
 
   return canvas.toDataURL("image/png");
 }
@@ -173,8 +197,19 @@ img{max-width:100%;max-height:100vh;display:block}</style></head>
 
 /* ---------------- Dialog ---------------- */
 
-export function QrDialog({ checklist, department, onClose }: { checklist: Checklist | null; department?: Department; onClose: () => void }) {
+export function QrDialog({
+  checklist,
+  department,
+  kind,
+  onClose,
+}: {
+  checklist: Checklist | null;
+  department?: Department;
+  kind: QrKind;
+  onClose: () => void;
+}) {
   const [png, setPng] = useState("");
+  const [link, setLink] = useState("");
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState("");
 
@@ -183,29 +218,35 @@ export function QrDialog({ checklist, department, onClose }: { checklist: Checkl
     let live = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset when a different checklist opens
     setPng("");
+    setLink("");
     setErr("");
-    drawQrCard(checklist, department)
-      .then((p) => live && setPng(p))
-      .catch(() => live && setErr("Could not make the QR code"));
+    (async () => {
+      const url = kind === "report" ? await reportLink(checklist) : checklistLink(checklist);
+      const p = await drawQrCard(checklist, department, kind, url);
+      if (live) {
+        setLink(url);
+        setPng(p);
+      }
+    })().catch(() => live && setErr("Could not make the QR code"));
     return () => {
       live = false;
     };
-  }, [checklist, department]);
+  }, [checklist, department, kind]);
 
   function download() {
     if (!checklist || !png) return;
     const a = document.createElement("a");
     a.href = png;
-    a.download = fileName(checklist);
+    a.download = fileName(checklist, kind);
     document.body.appendChild(a);
     a.click();
     a.remove();
   }
 
   async function copy() {
-    if (!checklist) return;
+    if (!link) return;
     try {
-      await navigator.clipboard.writeText(checklistLink(checklist));
+      await navigator.clipboard.writeText(link);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {}
@@ -215,10 +256,10 @@ export function QrDialog({ checklist, department, onClose }: { checklist: Checkl
     <Modal
       open={!!checklist}
       onClose={onClose}
-      title="QR code"
+      title={kind === "report" ? "Report QR code" : "QR code"}
       footer={
         <>
-          <button className="btn btn-ghost mr-auto" onClick={copy} disabled={!checklist}>
+          <button className="btn btn-ghost mr-auto" onClick={copy} disabled={!link}>
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? "Copied" : "Copy link"}
           </button>
           <button className="btn btn-ghost" onClick={() => checklist && png && printImage(png, checklist.title_en)} disabled={!png}>
@@ -230,12 +271,22 @@ export function QrDialog({ checklist, department, onClose }: { checklist: Checkl
         </>
       }
     >
-      <p className="mb-3 text-[13px] text-ink-3">
-        Print it and put it where the check is done. Staff scan it with the phone camera and the checklist opens directly.
-        <span className="mt-1 block" dir="rtl">
-          اطبعه وضعه في مكان الفحص. يمسحه الموظف بكاميرا الجوال فتفتح القائمة مباشرة.
-        </span>
-      </p>
+      {kind === "report" ? (
+        <p className="mb-3 text-[13px] text-ink-3">
+          Scanning opens this checklist&apos;s report for the current month as a PDF, up to the moment of scanning. Anyone holding this code can view the
+          report, so give it only to supervisors.
+          <span className="mt-1 block" dir="rtl">
+            المسح يفتح تقرير هذا الشهر بصيغة PDF محدّثاً لحظة المسح. أي شخص معه هذا الرمز يقدر يشوف التقرير، فأعطه للمشرفين فقط.
+          </span>
+        </p>
+      ) : (
+        <p className="mb-3 text-[13px] text-ink-3">
+          Print it and put it where the check is done. Staff scan it with the phone camera and the checklist opens directly.
+          <span className="mt-1 block" dir="rtl">
+            اطبعه وضعه في مكان الفحص. يمسحه الموظف بكاميرا الجوال فتفتح القائمة مباشرة.
+          </span>
+        </p>
+      )}
       <div className="grid place-items-center rounded-2xl bg-white/90 p-3">
         {png ? (
           <img src={png} alt={`QR code for ${checklist?.title_en}`} className="h-auto max-h-[56vh] w-auto rounded-lg shadow-lg" />

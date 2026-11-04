@@ -160,3 +160,14 @@ export function throttle(req: Request, scope: string) {
     ok: () => tries.delete(k),
   };
 }
+
+/* ---------------- Report QR links ----------------
+ * The "latest report" QR carries a secret per checklist, so only people holding the printed code can open it.
+ */
+export function reportToken(checklistId: string) {
+  return sign(`report:${checklistId}`).slice(0, 24);
+}
+
+export function checkReportToken(checklistId: string, token: string | null) {
+  return !!token && safeEqual(token, reportToken(checklistId));
+}
