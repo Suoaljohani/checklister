@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion, Reorder } from "motion/react";
-import { ArrowDown, ArrowUp, Eye, EyeOff, FileText, Lock, LockOpen, Pencil, Plus, QrCode, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Eye, EyeOff, FileText, LoaderCircle, Lock, LockOpen, Pencil, Plus, Printer, QrCode, Trash2, X } from "lucide-react";
 import { Icon, ICONS } from "@/components/icon";
 import { Modal } from "@/components/modal";
 import { EASE } from "@/components/motion";
@@ -35,6 +35,23 @@ export default function ChecklistsPage() {
   const { data: deps } = useData<Department[]>("/api/admin/departments");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [qr, setQr] = useState<{ c: Checklist; kind: QrKind } | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheet, setSheet] = useState<{ kind: QrKind; done: number; total: number } | null>(null);
+
+  async function makeSheet(kind: QrKind) {
+    if (!data || !deps || sheet) return;
+    setSheet({ kind, done: 0, total: 0 });
+    try {
+      const { downloadQrSheet } = await import("./qr-sheet");
+      const n = await downloadQrSheet(data, deps, kind, (done, total) => setSheet({ kind, done, total }));
+      toast(n ? `PDF downloaded · ${n} QR codes` : "No visible checklists", n ? "ok" : "error");
+    } catch (e) {
+      console.error(e);
+      toast("Could not make the PDF", "error");
+    } finally {
+      setSheet(null);
+    }
+  }
 
   function create() {
     setDraft({
@@ -108,6 +125,9 @@ export default function ChecklistsPage() {
   return (
     <div>
       <PageTitle title="Checklists" sub="Add, edit, reorder or hide the checklists staff see">
+        <button className="btn btn-ghost" onClick={() => setSheetOpen(true)} disabled={!data?.length}>
+          <Printer className="h-4 w-4" /> All QR codes (PDF)
+        </button>
         <button className="btn btn-primary" onClick={create} disabled={!deps?.length}>
           <Plus className="h-4 w-4" /> New checklist
         </button>
@@ -191,6 +211,39 @@ export default function ChecklistsPage() {
         {data?.length === 0 && <p className="glass p-10 text-center text-ink-3">No checklists yet.</p>}
         {!data && <div className="glass h-24 animate-pulse" />}
       </div>
+
+      <Modal open={sheetOpen} onClose={() => !sheet && setSheetOpen(false)} title="All QR codes (PDF)">
+        <p className="mb-4 text-[13px] text-ink-3">
+          One PDF with every visible checklist, 9 codes per A4 page, in colour, with cut lines. Print at 100% scale.
+          <span className="mt-1 block" dir="rtl">
+            ملف PDF واحد فيه كل القوائم، 9 رموز في كل صفحة A4 بالألوان مع خطوط القص. اطبعه بمقاس 100%.
+          </span>
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {([
+            ["open", "Open checklist codes", "رموز فتح القوائم", "For staff: scanning opens the checklist to fill in.", QrCode],
+            ["report", "Report codes", "رموز التقارير", "For supervisors: scanning opens the latest report as PDF.", FileText],
+          ] as const).map(([kind, en, ar, sub, Ico]) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => makeSheet(kind)}
+              disabled={!!sheet}
+              className="flex flex-col items-start gap-1.5 rounded-2xl border border-ink/10 bg-white/[0.06] p-4 text-left transition-colors hover:bg-white/10 disabled:opacity-60"
+            >
+              <span className="flex items-center gap-2 font-semibold">
+                {sheet?.kind === kind ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Ico className="h-4 w-4" />} {en}
+              </span>
+              <span className="text-[13px] text-ink-2" dir="rtl">
+                {ar}
+              </span>
+              <span className="text-[12px] text-ink-3">
+                {sheet?.kind === kind && sheet.total ? `Making… ${sheet.done}/${sheet.total}` : sub}
+              </span>
+            </button>
+          ))}
+        </div>
+      </Modal>
 
       <QrDialog
         checklist={qr?.c ?? null}

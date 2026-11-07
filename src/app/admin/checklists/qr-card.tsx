@@ -16,7 +16,7 @@ export type QrKind = "open" | "report";
 const REPORT_COLOR = "#283A83";
 
 /** Link for the "latest report" QR: needs the checklist's secret, which only admins can fetch. */
-async function reportLink(c: Pick<Checklist, "id">) {
+export async function reportLink(c: Pick<Checklist, "id">) {
   const r = await fetch(`/api/admin/report-link/${encodeURIComponent(c.id)}`, { cache: "no-store" });
   if (!r.ok) throw new Error();
   const { token } = (await r.json()) as { token: string };
