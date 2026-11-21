@@ -8,6 +8,6 @@ export async function GET() {
   const e = accounts ? await currentEmployee() : null;
   return Response.json({
     mode: accounts ? "accounts" : "open",
-    staff: e ? { name: e.name, no: e.employee_no, job_title: e.job_title } : null,
+    staff: e ? { name: e.name, no: e.employee_no, job_title: e.job_title, allowed_shifts: e.allowed_shifts ?? null } : null,
   });
 }

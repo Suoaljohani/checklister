@@ -13,5 +13,5 @@ export async function POST(req: Request) {
   }
   t.ok();
   await createStaffSession(e.id);
-  return Response.json({ name: e.name, no: e.employee_no });
+  return Response.json({ name: e.name, no: e.employee_no, allowed_shifts: e.allowed_shifts ?? null });
 }

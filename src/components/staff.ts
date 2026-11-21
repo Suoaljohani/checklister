@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-export type Staff = { name: string; no: string };
+export type Staff = { name: string; no: string; allowed_shifts?: ("M" | "A" | "N")[] | null };
 export type StaffMode = "open" | "accounts";
 const KEY = "chk_staff";
 
@@ -51,7 +51,7 @@ export function useStaff() {
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || "Could not sign in");
-    setStaff({ name: j.name, no: j.no });
+    setStaff({ name: j.name, no: j.no, allowed_shifts: j.allowed_shifts ?? null });
   }
   async function signOut() {
     if (mode === "accounts") await fetch("/api/staff/logout", { method: "POST" }).catch(() => {});

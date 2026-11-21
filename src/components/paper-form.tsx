@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import { forwardRef } from "react";
 import type { Checklist, Department, Field, Settings, Submission } from "@/lib/types";
-import { formatValue, isGrid, isOutOfRange, shiftOf, valueFields, zoned } from "@/lib/utils";
+import { formatValue, isGrid, isOutOfRange, recordDay, recordShift, shiftOf, valueFields, zoned } from "@/lib/utils";
 
 export const PAGE = {
   portrait: { w: 794, h: 1123, rows: 31, rowH: 23 },
@@ -305,14 +305,14 @@ function GridBody({ checklist: c, cols, fields }: PageProps & { cols: (Submissio
             )}
             {cols.map((s, i) => (
               <th key={i} style={th}>
-                {s ? zoned(s.submitted_at).date.slice(0, 5) : " "}
+                {s ? recordDay(s) : " "}
               </th>
             ))}
           </tr>
           <tr>
             {cols.map((s, i) => (
               <th key={i} style={{ ...th, fontWeight: 400 }}>
-                {s ? shiftOf(s.submitted_at) : " "}
+                {s ? recordShift(s) : " "}
               </th>
             ))}
           </tr>

@@ -97,3 +97,14 @@ export function shiftOf(iso: string | Date, tz = TZ) {
   const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "numeric", hourCycle: "h23" }).format(d));
   return h >= 7 && h < 15 ? "M" : h >= 15 && h < 23 ? "A" : "N";
 }
+
+/** Shift letter of a record: the recorded shift for shift-controlled checklists, else from the time. */
+export function recordShift(r: { submitted_at: string; shift_code?: string | null }) {
+  return r.shift_code ?? shiftOf(r.submitted_at);
+}
+
+/** dd/mm of a record's operating day (a 01:00 night check belongs to the date before). */
+export function recordDay(r: { submitted_at: string; shift_date?: string | null }) {
+  if (r.shift_date) return `${r.shift_date.slice(8, 10)}/${r.shift_date.slice(5, 7)}`;
+  return zoned(r.submitted_at).date.slice(0, 5);
+}

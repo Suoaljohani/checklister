@@ -171,3 +171,16 @@ export function reportToken(checklistId: string) {
 export function checkReportToken(checklistId: string, token: string | null) {
   return !!token && safeEqual(token, reportToken(checklistId));
 }
+
+/**
+ * Current time for shift checks. Local automated tests may pin the clock with an
+ * x-test-now header, but only when CHK_TEST_CLOCK=1 is set; it is never set on the live site.
+ */
+export function serverNow(req: Request) {
+  if (process.env.CHK_TEST_CLOCK === "1") {
+    const v = req.headers.get("x-test-now");
+    const d = v ? new Date(v) : null;
+    if (d && !Number.isNaN(d.getTime())) return d;
+  }
+  return new Date();
+}

@@ -11,9 +11,12 @@ import { Icon } from "@/components/icon";
 import { EASE, Rise } from "@/components/motion";
 import { clearSavedSignature, getSavedSignature, greeting, useStaff } from "@/components/staff";
 import { LAST_DEPT, StaffNav } from "@/components/staff-nav";
+import { ShiftChips } from "@/components/shift-chips";
+import { cx } from "@/lib/utils";
+import { frequencyLabel, type ShiftStatus } from "@/lib/shifts";
 import type { Checklist, Department } from "@/lib/types";
 
-type Data = { department: Department; checklists: Checklist[]; doneToday: Record<string, number> };
+type Data = { department: Department; checklists: (Checklist & { shift_status?: ShiftStatus[] | null })[]; doneToday: Record<string, number> };
 
 export function DepartmentView() {
   const { slug } = useParams<{ slug: string }>();
@@ -254,12 +257,16 @@ export function DepartmentView() {
           {!data &&
             [0, 1, 2].map((i) => <div key={i} className="glass aspect-[4/5] animate-pulse opacity-60 sm:aspect-square" />)}
           {data?.checklists.map((c, i) => {
-            const done = (data.doneToday[c.id] ?? 0) > 0;
+            const done = c.shift_status ? c.shift_status.every((x) => x.state === "done") : (data.doneToday[c.id] ?? 0) > 0;
             return (
               <Rise key={c.id} i={3 + i}>
                 <button
                   onClick={() => open(c)}
-                  className="glass glass-hover sheen focus-ring group flex aspect-[4/5] w-full flex-col justify-between p-4 text-left sm:aspect-square sm:p-5"
+                  className={cx(
+                    "glass glass-hover sheen focus-ring group flex w-full flex-col justify-between p-4 text-left sm:p-5",
+                    // Shift checklists carry extra lines, so let those tiles grow instead of clipping.
+                    c.shift_status ? "h-full min-h-[15rem] gap-3" : "aspect-[4/5] sm:aspect-square",
+                  )}
                 >
                   <div className="flex items-start justify-between">
                     <span
@@ -294,6 +301,14 @@ export function DepartmentView() {
                       <p className="mt-1 line-clamp-2 text-[13px] text-ink-3" dir="rtl">
                         {c.title_ar}
                       </p>
+                    )}
+                    {c.shift_status && (
+                      <>
+                        <p className="mt-2 text-[11px] font-medium text-ink-3">
+                          {frequencyLabel(c.shift_status.length).en} · <span dir="rtl">{frequencyLabel(c.shift_status.length).ar}</span>
+                        </p>
+                        <ShiftChips statuses={c.shift_status} className="mt-1.5" />
+                      </>
                     )}
                   </div>
                 </button>

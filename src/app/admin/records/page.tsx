@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { CircleAlert, Pencil, Search, Trash2 } from "lucide-react";
 import { Modal } from "@/components/modal";
 import type { Checklist, FieldValue, Submission } from "@/lib/types";
-import { currentMonth, cx, formatValue, isOutOfRange, monthRange, shiftOf, zoned } from "@/lib/utils";
+import { currentMonth, cx, formatValue, isOutOfRange, monthRange, recordShift, zoned } from "@/lib/utils";
 import { useToast } from "../admin-shell";
 import { api, PageTitle, useData } from "../use-data";
 
@@ -93,7 +93,7 @@ export default function RecordsPage() {
                       <td className="whitespace-nowrap px-4 py-3">
                         <span className="num block font-medium">{z.date}</span>
                         <span className="num text-[12px] text-ink-3">
-                          {z.dayShort} · {z.time} · {shiftOf(r.submitted_at)}
+                          {z.dayShort} · {z.time} · {recordShift(r)}
                         </span>
                       </td>
                       <td className="max-w-[220px] px-4 py-3">
