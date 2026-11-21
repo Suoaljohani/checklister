@@ -11,10 +11,13 @@ import { Icon } from "@/components/icon";
 import { EASE, Rise } from "@/components/motion";
 import { SignatureSheet } from "@/components/signature-sheet";
 import { useStaff } from "@/components/staff";
-import type { Checklist, Department, Field, FieldValue } from "@/lib/types";
+import { ShiftList } from "@/components/shift-chips";
+import { frequencyLabel, SHIFT_NAMES, type ShiftStatus } from "@/lib/shifts";
+import type { Checklist, Department, Field, FieldValue, ShiftCode, ShiftWindow } from "@/lib/types";
 import { cx, isOutOfRange, rangeLabel, shiftOf, zoned } from "@/lib/utils";
 
-type Data = { checklist: Checklist; department: Department };
+type ShiftInfo = { statuses: ShiftStatus[]; open: { code: ShiftCode; date: string } | null; next: ShiftWindow | null };
+type Data = { checklist: Checklist; department: Department; shift?: ShiftInfo | null };
 
 export function ChecklistForm() {
   const { slug, checklist: id } = useParams<{ slug: string; checklist: string }>();
@@ -85,6 +88,7 @@ export function ChecklistForm() {
   function review(e: React.FormEvent) {
     e.preventDefault();
     if (!data) return;
+    if (shiftBlock(data.shift ?? null, staff?.allowed_shifts ?? null)) return;
     const bad: Record<string, boolean> = {};
     for (const f of data.checklist.fields) {
       if (f.type === "heading") continue;
@@ -135,7 +139,11 @@ export function ChecklistForm() {
         load();
         return;
       }
-      if (!r.ok) throw new Error(j.error || "Could not submit");
+      if (!r.ok) {
+        // Shift rules (409 already checked, 403 not your shift, 422 outside time): refresh the shift card too.
+        if (j.duplicate || j.not_allowed || j.outside) load(unlock);
+        throw new Error(j.error_ar ? `${j.error} · ${j.error_ar}` : j.error || "Could not submit");
+      }
       setSigning(false);
       setDone({ at: j.submitted_at, flagged: j.flagged });
     } catch (err) {
@@ -176,6 +184,8 @@ export function ChecklistForm() {
 
   const z = now ? zoned(now) : null;
   const c = data?.checklist;
+  const shift = data?.shift ?? null;
+  const block = shiftBlock(shift, staff?.allowed_shifts ?? null);
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 pt-[max(16px,env(safe-area-inset-top))] sm:px-6">
@@ -230,13 +240,33 @@ export function ChecklistForm() {
             <UserRound className="h-4 w-4 text-ink-3" />
             <span className="text-ink-3">Checked by</span>
             <span className="truncate font-semibold">{staff?.name ?? "—"}</span>
-            {now && (
+            {now && (!data?.shift || data.shift.open) && (
               <span className="ml-auto shrink-0 rounded-full bg-white/[0.08] px-2 py-0.5 text-[12px] font-semibold text-ink-2">
-                Shift {shiftOf(now)}
+                Shift {data?.shift?.open?.code ?? shiftOf(now)}
               </span>
             )}
           </div>
         </Rise>
+
+        {shift && (
+          <Rise i={1} className="glass p-4 sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="eyebrow">Shifts · الشفتات</p>
+              <span className="text-[12px] text-ink-3">
+                {frequencyLabel(shift.statuses.length).en} · <span dir="rtl">{frequencyLabel(shift.statuses.length).ar}</span>
+              </span>
+            </div>
+            <ShiftList statuses={shift.statuses} />
+            {block && (
+              <div className="mt-3 rounded-xl bg-warn/12 px-3 py-2.5 text-[14px] text-warn" role="status">
+                <p className="font-semibold">{block.en}</p>
+                <p className="mt-0.5" dir="rtl">
+                  {block.ar}
+                </p>
+              </div>
+            )}
+          </Rise>
+        )}
 
         <Rise i={2} className="glass flex flex-col gap-5 p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
@@ -320,8 +350,9 @@ export function ChecklistForm() {
         </AnimatePresence>
 
         <Rise i={3} className="sticky bottom-[max(12px,env(safe-area-inset-bottom))] z-10">
-          <button className="btn btn-primary h-14 w-full text-[16px]" disabled={!c}>
-            Submit & sign
+          <button className="btn btn-primary h-14 w-full text-[16px]" disabled={!c || !!block}>
+            {block ? <Lock className="h-4 w-4" /> : null}
+            {block ? block.short : "Submit & sign"}
           </button>
         </Rise>
       </form>
@@ -865,4 +896,29 @@ function LockScreen({
       </Rise>
     </main>
   );
+}
+
+/** Why this checklist can't be submitted right now (shift rules), or null. The server checks the same rules again. */
+function shiftBlock(shift: ShiftInfo | null, allowed: ShiftCode[] | null) {
+  if (!shift) return null;
+  if (!shift.open) {
+    const nx = shift.next;
+    return {
+      short: "Outside check time",
+      en: nx ? `Outside check time. Next check: ${SHIFT_NAMES[nx.code].en} at ${nx.start}.` : "Outside check time.",
+      ar: nx ? `خارج وقت التشييك. الموعد التالي: ${SHIFT_NAMES[nx.code].ar} الساعة ${nx.start}` : "خارج وقت التشييك",
+    };
+  }
+  const cur = shift.statuses.find((x) => x.code === shift.open!.code);
+  if (cur?.state === "done") {
+    const t = cur.at ? zoned(cur.at).time : "";
+    return {
+      short: "Already checked this shift",
+      en: `Checked by ${cur.by ?? "—"} at ${t}.`,
+      ar: `تم التشييك بواسطة ${cur.by ?? "—"} الساعة ${t}`,
+    };
+  }
+  if (allowed && !allowed.includes(shift.open.code))
+    return { short: "Shift not allowed", en: "This shift is not allowed for your account.", ar: "هذا الشفت غير مسموح لحسابك" };
+  return null;
 }

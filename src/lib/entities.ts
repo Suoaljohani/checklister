@@ -1,4 +1,5 @@
 import { hashPassword } from "./auth";
+import { cleanAllowedShifts, cleanShifts } from "./shifts";
 import type { Checklist, Department, Employee, EntityName, Field, FieldValue, Submission } from "./types";
 import { slugify, uid } from "./utils";
 
@@ -74,6 +75,8 @@ export function sanitize(entity: EntityName, b: In, existing: Department | Check
     if (!department_id) return { error: "Choose a department" };
     const f = fields(b.fields ?? e?.fields);
     if (typeof f === "string") return { error: f };
+    const shifts = cleanShifts(b.shifts === undefined ? e?.shifts : b.shifts);
+    if (typeof shifts === "string") return { error: shifts };
     // Locked = staff must enter their own account password each time they open it.
     // Stored in the lock_hash column as a non-empty marker (no shared code any more).
     const lock_hash = b.locked === undefined ? (e?.lock_hash ? "staff" : "") : b.locked ? "staff" : "";
@@ -90,6 +93,7 @@ export function sanitize(entity: EntityName, b: In, existing: Department | Check
         footer_note: str(b.footer_note ?? e?.footer_note, 120),
         orientation: (b.orientation ?? e?.orientation) === "landscape" ? "landscape" : "portrait",
         lock_hash,
+        shifts,
         layout: ((l) => (l === "grid" || l === "table" ? l : null))(b.layout === undefined ? e?.layout : b.layout),
         sort: num(b.sort ?? e?.sort) ?? 0,
         active: b.active === undefined ? (e?.active ?? true) : Boolean(b.active),
@@ -103,6 +107,8 @@ export function sanitize(entity: EntityName, b: In, existing: Department | Check
     if (!name) return { error: "Name is required" };
     const employee_no = str(b.employee_no ?? e?.employee_no, 30).replace(/\s+/g, "");
     if (!employee_no) return { error: "Employee number is required" };
+    const allowed = cleanAllowedShifts(b.allowed_shifts === undefined ? e?.allowed_shifts : b.allowed_shifts);
+    if (typeof allowed === "string") return { error: allowed };
     const pw = b.password === undefined || b.password === null ? "" : String(b.password);
     if (!e && pw.length < 4) return { error: "Password needs at least 4 characters" };
     if (pw && pw.length < 4) return { error: "Password needs at least 4 characters" };
@@ -113,6 +119,7 @@ export function sanitize(entity: EntityName, b: In, existing: Department | Check
         name_ar: str(b.name_ar ?? e?.name_ar, 80),
         employee_no,
         job_title: str(b.job_title ?? e?.job_title, 60),
+        allowed_shifts: allowed,
         password_hash: pw ? hashPassword(pw.slice(0, 100)) : e?.password_hash,
         active: b.active === undefined ? (e?.active ?? true) : Boolean(b.active),
         sort: num(b.sort ?? e?.sort) ?? 0,

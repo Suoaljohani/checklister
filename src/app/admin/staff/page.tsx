@@ -7,6 +7,7 @@ import { Modal } from "@/components/modal";
 import { EASE } from "@/components/motion";
 import type { Employee } from "@/lib/types";
 import { cx } from "@/lib/utils";
+import { SHIFT_CODES, SHIFT_NAMES } from "@/lib/shifts";
 import { useToast } from "../admin-shell";
 import { api, PageTitle, useData } from "../use-data";
 
@@ -128,6 +129,7 @@ export default function StaffPage() {
                 <p className="mt-0.5 text-[13px] text-ink-3">
                   <span className="num">#{e.employee_no}</span>
                   {e.job_title && ` · ${e.job_title}`}
+                  {e.allowed_shifts?.length ? ` · Shifts ${e.allowed_shifts.join(" ")}` : " · All shifts"}
                   {!e.active && " · turned off"}
                 </p>
               </div>
@@ -213,6 +215,29 @@ export default function StaffPage() {
                 value={draft.password ?? ""}
                 onChange={(e) => setDraft({ ...draft, password: e.target.value })}
               />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="label">Allowed shifts · الشفتات المسموحة</label>
+              <div className="grid grid-cols-3 gap-2">
+                {SHIFT_CODES.map((code) => {
+                  const cur = draft.allowed_shifts ?? SHIFT_CODES;
+                  const on = cur.includes(code);
+                  return (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => {
+                        const next = on ? cur.filter((x) => x !== code) : SHIFT_CODES.filter((x) => x === code || cur.includes(x));
+                        setDraft({ ...draft, allowed_shifts: next.length === 3 ? null : next });
+                      }}
+                      className={cx("btn btn-sm border", on ? "border-blue/40 bg-blue/10 text-blue" : "border-ink/10 bg-white/[0.06] text-ink-3")}
+                    >
+                      <span className="num font-bold">{code}</span> {SHIFT_NAMES[code].en}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1 text-[12px] text-ink-3">Only applies to checklists that are checked by shifts.</p>
             </div>
             <label className="flex items-center gap-2 text-[14px] text-ink-2 sm:col-span-2">
               <input type="checkbox" className="h-4 w-4 accent-[#1691d0]" checked={draft.active ?? true} onChange={(e) => setDraft({ ...draft, active: e.target.checked })} />

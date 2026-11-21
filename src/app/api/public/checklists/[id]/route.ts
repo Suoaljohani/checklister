@@ -1,5 +1,6 @@
 import { connection, type NextRequest } from "next/server";
-import { accountsRequired, isLocked, readUnlockToken } from "@/lib/auth";
+import { accountsRequired, isLocked, readUnlockToken, serverNow } from "@/lib/auth";
+import { nextShift, openShift, shiftStatuses, shiftsOf } from "@/lib/shifts";
 import { toClient } from "@/lib/entities";
 import { store } from "@/lib/store";
 
@@ -20,5 +21,18 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/public/check
       },
       { status: 403 },
     );
-  return Response.json({ checklist: toClient(checklist), department });
+  // Shift-controlled: what is open now, what is done, and when the next window opens.
+  const w = shiftsOf(checklist);
+  let shift = null;
+  if (w) {
+    const now = serverNow(req);
+    const recent = await s.submissions({ checklist_id: checklist.id, from: new Date(now.getTime() - 3 * 86400e3).toISOString() });
+    const open = openShift(w, now);
+    shift = {
+      statuses: shiftStatuses(w, recent, now),
+      open: open ? { code: open.window.code, date: open.date } : null,
+      next: nextShift(w, now),
+    };
+  }
+  return Response.json({ checklist: toClient(checklist), department, shift });
 }

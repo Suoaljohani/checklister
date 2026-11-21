@@ -17,6 +17,11 @@ export type Field = {
   photo?: boolean;
 };
 
+export type ShiftCode = "M" | "A" | "N";
+
+/** A check window in hospital time, "HH:MM". End before start means it crosses midnight. */
+export type ShiftWindow = { code: ShiftCode; start: string; end: string };
+
 export type Department = {
   id: string;
   slug: string;
@@ -45,6 +50,8 @@ export type Checklist = {
   lock_hash?: string;
   /** Sent to the browser instead of lock_hash. */
   locked?: boolean;
+  /** Shift windows. Null or empty = not shift-controlled (works as before). */
+  shifts?: ShiftWindow[] | null;
   sort: number;
   active: boolean;
   created_at: string;
@@ -63,6 +70,9 @@ export type Submission = {
   signature: string;
   /** Photos taken for fields, keyed by field key (JPEG data URLs). Left out of list views. */
   photos?: Record<string, string>;
+  /** Shift-controlled checklists only: the shift and its operating date (YYYY-MM-DD). */
+  shift_code?: ShiftCode | null;
+  shift_date?: string | null;
   flagged: boolean;
   note: string;
 };
@@ -83,6 +93,8 @@ export type Employee = {
   job_title: string;
   /** Never sent to the browser. */
   password_hash?: string;
+  /** Shifts this employee may check. Null = all shifts. */
+  allowed_shifts?: ShiftCode[] | null;
   active: boolean;
   sort: number;
   created_at: string;

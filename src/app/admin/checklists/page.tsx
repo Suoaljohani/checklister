@@ -11,6 +11,7 @@ import { TEMPLATES, type Template } from "@/lib/templates";
 import { cx, rangeLabel } from "@/lib/utils";
 import { useToast } from "../admin-shell";
 import { QrDialog, type QrKind } from "./qr-card";
+import { DEFAULT_SHIFTS, frequencyLabel, SHIFT_CODES, SHIFT_NAMES } from "@/lib/shifts";
 import { api, PageTitle, useData } from "../use-data";
 
 const COLORS = ["#1691D0", "#2BAAE2", "#3AC0C3", "#04A67A", "#9ECC3B", "#283A83", "#7A5AF8", "#E9A23B", "#E0475B", "#51938B"];
@@ -154,6 +155,11 @@ export default function ChecklistsPage() {
                   {c.locked && (
                     <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-warn/15 px-2 py-0.5 align-middle text-[11px] font-semibold text-warn">
                       <Lock className="h-3 w-3" /> Locked
+                    </span>
+                  )}
+                  {!!c.shifts?.length && (
+                    <span className="num ml-2 inline-flex items-center gap-1 rounded-full bg-sky/15 px-2 py-0.5 align-middle text-[11px] font-semibold text-sky">
+                      Shifts {c.shifts.map((w) => w.code).join(" ")}
                     </span>
                   )}
                 </p>
@@ -403,6 +409,8 @@ function Editor({ draft, deps, onClose, onSaved }: { draft: Draft | null; deps: 
           </span>
         </label>
 
+        <ShiftSettings d={d} setD={setD} />
+
         <div className="sm:col-span-2">
           <label className="label">Report style</label>
           <div className="grid grid-cols-3 gap-2">
@@ -538,5 +546,71 @@ function Editor({ draft, deps, onClose, onSaved }: { draft: Draft | null; deps: 
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** Per-checklist shift schedule: which shifts are required and the check window of each. */
+function ShiftSettings({ d, setD }: { d: Draft; setD: (d: Draft) => void }) {
+  const on = !!d.shifts?.length;
+  const list = d.shifts ?? [];
+  const setWin = (code: (typeof SHIFT_CODES)[number], patch: Partial<{ start: string; end: string }> | null) => {
+    const def = DEFAULT_SHIFTS.find((w) => w.code === code)!;
+    const cur = list.find((w) => w.code === code);
+    let next = list.filter((w) => w.code !== code);
+    if (patch) next = [...next, { ...(cur ?? def), ...patch }];
+    next.sort((a, b) => SHIFT_CODES.indexOf(a.code) - SHIFT_CODES.indexOf(b.code));
+    setD({ ...d, shifts: next.length ? next : null });
+  };
+  return (
+    <div className="rounded-2xl border border-ink/5 bg-white/[0.05] p-3 sm:col-span-2">
+      <label className="flex items-start gap-2.5 text-[14px] text-ink-2">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 accent-[#2fd3e0]"
+          checked={on}
+          onChange={(e) => setD({ ...d, shifts: e.target.checked ? DEFAULT_SHIFTS.map((w) => ({ ...w })) : null })}
+        />
+        <span>
+          <span className="font-semibold text-ink">Check by shifts · التشييك حسب الشفتات</span>
+          <span className="block text-[12px] text-ink-3">
+            Staff can only submit inside a shift window, once per shift. Off = works as before (any time).
+          </span>
+        </span>
+      </label>
+      {on && (
+        <div className="mt-3 grid gap-2">
+          {SHIFT_CODES.map((code) => {
+            const w = list.find((x) => x.code === code);
+            const crosses = w && w.end <= w.start;
+            return (
+              <div key={code} className={cx("grid grid-cols-[auto_1fr] items-center gap-2 rounded-xl p-2 sm:grid-cols-[150px_1fr_1fr]", w ? "bg-white/[0.06]" : "opacity-60")}>
+                <label className="flex items-center gap-2 text-[14px]">
+                  <input type="checkbox" className="h-4 w-4 accent-[#2fd3e0]" checked={!!w} onChange={(e) => setWin(code, e.target.checked ? {} : null)} />
+                  <span className="num font-bold">{code}</span> {SHIFT_NAMES[code].en}
+                </label>
+                {w ? (
+                  <div className="col-span-2 grid grid-cols-2 gap-2 sm:col-span-2">
+                    <label className="text-[12px] text-ink-3">
+                      Opens
+                      <input type="time" className="field sm num mt-1" value={w.start} onChange={(e) => setWin(code, { start: e.target.value })} />
+                    </label>
+                    <label className="text-[12px] text-ink-3">
+                      Closes {crosses && <span className="text-sky">(next day)</span>}
+                      <input type="time" className="field sm num mt-1" value={w.end} onChange={(e) => setWin(code, { end: e.target.value })} />
+                    </label>
+                  </div>
+                ) : (
+                  <span className="text-[12px] text-ink-3">Not required</span>
+                )}
+              </div>
+            );
+          })}
+          <p className="text-[12px] text-ink-3">
+            {list.length ? `${frequencyLabel(list.length).en} · ${frequencyLabel(list.length).ar}. ` : ""}
+            Times are Saudi time. A night window can pass midnight; a check after midnight counts for the night before.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }

@@ -148,6 +148,11 @@ class FileStore implements Store {
   }
   insert<E extends EntityName>(entity: E, row: EntityMap[E]) {
     return this.write((db) => {
+      // Mirror of the database's unique index submissions_one_per_shift.
+      const r = row as Submission;
+      if (entity === "submissions" && r.shift_code && r.shift_date)
+        if (db.submissions.some((x) => x.checklist_id === r.checklist_id && x.shift_code === r.shift_code && x.shift_date === r.shift_date))
+          throw new Error('duplicate key value violates unique constraint "submissions_one_per_shift"');
       (db[entity] as Row[]).push(row);
       return row;
     });

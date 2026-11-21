@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReportInput } from "@/components/paper-form";
-import { formatValue, isGrid, isOutOfRange, shiftOf, valueFields, zoned } from "./utils";
+import { formatValue, isGrid, isOutOfRange, recordDay, recordShift, valueFields, zoned } from "./utils";
 
 function fileBase(r: ReportInput) {
   const t = r.checklist.title_en.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 60);
@@ -139,7 +139,7 @@ export async function exportExcel(r: ReportInput) {
       z.date,
       z.day,
       z.time,
-      shiftOf(s.submitted_at),
+      recordShift(s),
       ...fields.map((f) => {
         const v = s.values[f.key];
         return f.type === "number" && typeof v === "number" ? v : formatValue(f, v);
@@ -278,7 +278,7 @@ export async function exportWord(r: ReportInput) {
           children: [
             small("ITEM", { bold: true, left: true, fill: "EEF4F8" }),
             ...(hasQty ? [small("QTY", { bold: true, fill: "EEF4F8" })] : []),
-            ...cols.map((s) => small(s ? `${zoned(s.submitted_at).date.slice(0, 5)} ${shiftOf(s.submitted_at)}` : "", { bold: true, fill: "EEF4F8" })),
+            ...cols.map((s) => small(s ? `${recordDay(s)} ${recordShift(s)}` : "", { bold: true, fill: "EEF4F8" })),
           ],
         }),
       ];
