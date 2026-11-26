@@ -1,0 +1,32 @@
+.labels {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  margin-top: 1rem;
+}
+
+.label {
+  background: white;
+  border: 1px solid #9ca3af;
+  border-radius: 0.5rem;
+  color: #111827;
+  padding: 0.75rem;
+  text-align: center;
+}
+
+.label img {
+  margin-inline: auto;
+}
+
+@media print {
+  .labels {
+    gap: 5mm;
+    grid-template-columns: repeat(2, 1fr);
+    margin: 0;
+  }
+
+  .label {
+    break-inside: avoid;
+    padding: 4mm;
+  }
+}
