@@ -369,3 +369,16 @@ select.field.sm {
 /* Scroll without a visible scrollbar (news feed) */
 .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+@media print {
+  body:has([data-resource-labels]) {
+    background: white;
+    display: block;
+    min-height: 0;
+  }
+
+  body:has([data-resource-labels]) .backdrop,
+  body:has([data-resource-labels]) .grain {
+    display: none;
+  }
+}
