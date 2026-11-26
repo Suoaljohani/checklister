@@ -100,7 +100,26 @@ export type Employee = {
   created_at: string;
 };
 
-export type EntityName = "departments" | "checklists" | "submissions" | "employees";
+/** A post in the staff news feed. Media files live in storage; only their paths are stored here. */
+export type NewsPost = {
+  id: string;
+  kind: "image" | "video" | "text";
+  caption: string;
+  /** Storage path of the photo or video ("" for text posts). */
+  media_path: string;
+  /** Storage path of a video's cover image. */
+  poster_path: string;
+  width: number;
+  height: number;
+  /** Background colour for text posts. */
+  bg: string;
+  pinned: boolean;
+  active: boolean;
+  sort: number;
+  created_at: string;
+};
+
+export type EntityName = "departments" | "checklists" | "submissions" | "employees" | "news";
 
 export type Stats = {
   generated_at: string;

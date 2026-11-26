@@ -11,6 +11,7 @@ import { Icon } from "@/components/icon";
 import { EASE, Rise } from "@/components/motion";
 import { clearSavedSignature, getSavedSignature, greeting, useStaff } from "@/components/staff";
 import { LAST_DEPT, StaffNav } from "@/components/staff-nav";
+import { NewsButton } from "@/components/news-button";
 import { ShiftChips } from "@/components/shift-chips";
 import { cx } from "@/lib/utils";
 import { frequencyLabel, type ShiftStatus } from "@/lib/shifts";
@@ -117,7 +118,10 @@ export function DepartmentView() {
         <div className="hidden sm:block">
           <Wordmark compact />
         </div>
-        <LiveClock className="glass rounded-full px-3 py-1.5" />
+        <div className="flex items-center gap-2">
+          <NewsButton fallback={<LiveClock className="glass rounded-full px-3 py-1.5 sm:hidden" />} />
+          <LiveClock className="glass hidden rounded-full px-3 py-1.5 sm:flex" />
+        </div>
       </header>
 
       <section className="pb-8 pt-6">

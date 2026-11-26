@@ -3,10 +3,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { defaultSettings, seedChecklists, seedDepartments } from "./seed";
-import type { Checklist, Department, Employee, EntityName, Settings, Submission } from "./types";
+import type { Checklist, Department, Employee, EntityName, NewsPost, Settings, Submission } from "./types";
 
-type Row = Department | Checklist | Submission | Employee;
-type EntityMap = { departments: Department; checklists: Checklist; submissions: Submission; employees: Employee };
+type Row = Department | Checklist | Submission | Employee | NewsPost;
+type EntityMap = { departments: Department; checklists: Checklist; submissions: Submission; employees: Employee; news: NewsPost };
 
 export type SubmissionQuery = {
   checklist_id?: string;
@@ -33,6 +33,7 @@ const ORDER: Record<EntityName, { col: string; asc: boolean }> = {
   checklists: { col: "sort", asc: true },
   submissions: { col: "submitted_at", asc: false },
   employees: { col: "name", asc: true },
+  news: { col: "created_at", asc: false },
 };
 
 function sortRows<T extends Row>(entity: EntityName, rows: T[]): T[] {
@@ -98,6 +99,7 @@ type FileDb = {
   checklists: Checklist[];
   submissions: Submission[];
   employees: Employee[];
+  news: NewsPost[];
   settings: Settings;
 };
 
@@ -111,12 +113,14 @@ class FileStore implements Store {
     try {
       this.cache = JSON.parse(await fs.readFile(this.file, "utf8")) as FileDb;
       this.cache.employees ??= [];
+      this.cache.news ??= [];
     } catch {
       this.cache = {
         departments: seedDepartments,
         checklists: seedChecklists,
         submissions: [],
         employees: [],
+        news: [],
         settings: defaultSettings,
       };
       await this.flush();

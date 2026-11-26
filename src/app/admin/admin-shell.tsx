@@ -17,6 +17,7 @@ import {
   Settings,
   TriangleAlert,
   Users,
+  Clapperboard,
 } from "lucide-react";
 import { Wordmark } from "@/components/brand";
 import { EASE } from "@/components/motion";
@@ -29,6 +30,7 @@ const NAV = [
   { href: "/admin/checklists", label: "Checklists", short: "Lists", icon: ListChecks },
   { href: "/admin/departments", label: "Departments", short: "Depts", icon: Building2 },
   { href: "/admin/staff", label: "Staff", icon: Users },
+  { href: "/admin/news", label: "News", icon: Clapperboard },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 

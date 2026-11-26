@@ -3,7 +3,8 @@ import { cleanAllowedShifts, cleanShifts } from "./shifts";
 import type { Checklist, Department, Employee, EntityName, Field, FieldValue, Submission } from "./types";
 import { slugify, uid } from "./utils";
 
-export function isEntity(e: string): e is EntityName {
+/** Entities handled by the generic admin routes (news has its own routes). */
+export function isEntity(e: string): e is Exclude<EntityName, "news"> {
   return e === "departments" || e === "checklists" || e === "submissions" || e === "employees";
 }
 
@@ -46,7 +47,7 @@ function fields(v: unknown): Field[] | string {
   return out;
 }
 
-export function sanitize(entity: EntityName, b: In, existing: Department | Checklist | Submission | Employee | null): Out {
+export function sanitize(entity: Exclude<EntityName, "news">, b: In, existing: Department | Checklist | Submission | Employee | null): Out {
   const now = new Date().toISOString();
   if (entity === "departments") {
     const e = existing as Department | null;
