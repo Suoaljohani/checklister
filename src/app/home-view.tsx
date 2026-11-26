@@ -1,5 +1,6 @@
 "use client";
 
+import { NewsButton } from "@/components/news-button";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ChevronLeft, ClipboardList, UserRound } from "lucide-react";
@@ -35,6 +36,7 @@ export function HomeView() {
       <header className="flex items-center justify-between gap-3 py-3">
         <Wordmark />
         <div className="flex items-center gap-3">
+          <NewsButton />
           <span className="hidden md:block">
             <HospitalBadge size={30} />
           </span>

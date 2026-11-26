@@ -365,3 +365,7 @@ select.field.sm {
   .pulse-dot::after, .sheen::after { animation: none !important; }
   .glass-hover { transition: none; }
 }
+
+/* Scroll without a visible scrollbar (news feed) */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
