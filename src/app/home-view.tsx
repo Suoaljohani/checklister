@@ -3,7 +3,7 @@
 import { NewsButton } from "@/components/news-button";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ChevronLeft, ClipboardList, UserRound } from "lucide-react";
+import { BookOpen, ChevronLeft, ClipboardList, UserRound } from "lucide-react";
 import { HospitalBadge, Wordmark } from "@/components/brand";
 import { LiveClock } from "@/components/clock";
 import { Icon } from "@/components/icon";
@@ -36,6 +36,10 @@ export function HomeView() {
       <header className="flex items-center justify-between gap-3 py-3">
         <Wordmark />
         <div className="flex items-center gap-3">
+          <Link href="/resources" prefetch={false} className="btn btn-ghost btn-sm rounded-full" aria-label="المكتبة الإلكترونية للطوارئ">
+            <BookOpen className="size-[18px]" />
+            <span className="hidden sm:inline" lang="ar">المكتبة</span>
+          </Link>
           <NewsButton />
           <span className="hidden md:block">
             <HospitalBadge size={30} />
